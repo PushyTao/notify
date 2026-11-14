@@ -55,6 +55,10 @@ chmod 600 compose.yaml
 
 两种模板任选其一：
 
+完整采集版已改用标准 `timescale/timescaledb:2.32.0-pg17`，省去 HA 工具。2026-11-15 核对的 amd64 压缩下载体积约 579 MB，原 HA 镜像约 939 MB，减少约 38%。DTK 强制依赖 TimescaleDB 扩展，不能直接改成普通 `postgres:17`。没有本地采集需求时，可使用简版，省去 DTK、PostgreSQL 和 Redis。
+
+旧版未部署成功、没有需保留的采集数据时，按 [切换步骤](docs/docker-storage.md#尚未正式使用的旧-ha-部署) 换用新模板。已有 DTK 数据的实例保留原 YAML，不要直接复用旧 HA 数据目录。
+
 | 模板 | 适用情况 |
 | --- | --- |
 | [完整采集版](deploy/compose.full.yaml) | 推荐，包含长虹和 DTK，无需另外克隆采集服务仓库 |
@@ -111,7 +115,7 @@ docker compose ps -a
 | --- | --- |
 | `/data/changhong/compose.yaml` | 你保存的部署配置及密钥 |
 | `/data/changhong/app` | 长虹 SQLite 数据库、转写模型缓存 |
-| `/data/changhong/dtk/postgres` | DTK PostgreSQL 数据 |
+| `/data/changhong/dtk/postgres-lite` | 标准 TimescaleDB 的 DTK 数据 |
 | `/data/changhong/dtk/redis` | Redis 持久化数据 |
 | `/data/changhong/dtk/backups` | DTK 备份 |
 | `/data/changhong/dtk/media` | DTK 媒体目录 |

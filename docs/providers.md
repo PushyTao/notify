@@ -2,6 +2,8 @@
 
 ## 自部署采集：DTK v5.1.10
 
+新部署推荐 [本项目完整镜像 YAML](../deploy/compose.full.yaml)：采用不带 HA 工具的标准 TimescaleDB，省去下面克隆上游仓库的步骤。完整操作见 [README](../README.md#拉取镜像部署推荐)。下文是上游 DTK 的独立部署方案，继续使用上游自己的数据库配置。
+
 本项目接入 [Douyin_TikTok_Download_API v5.1.10](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/releases/tag/v5.1.10)，镜像固定为 `evil0ctal/douyin_tiktok_download_api:sha-26299ef8649a12be82c3769b05b316fdeec8d40d`。需要 Docker Compose 2.24 或更新版本。只启动上游的 API、Worker、迁移、PostgreSQL 和 Redis；导入登录 Cookie 后不需要启用浏览器、下载或转写组件。若已有此版本的实例，可跳到后台设置步骤。
 
 在 Linux 或 WSL 的 Bash 终端进入本项目根目录，执行：

@@ -7,7 +7,7 @@
 | 主机路径 | 容器路径 | UID:GID |
 | --- | --- | --- |
 | `/data/changhong/app` | 长虹 `/data` | 10001:10001 |
-| `/data/changhong/dtk/postgres` | PostgreSQL `/home/postgres/pgdata/data` | 1000:1000 |
+| `/data/changhong/dtk/postgres-lite` | 标准 TimescaleDB `/var/lib/postgresql/data` | 70:70 |
 | `/data/changhong/dtk/redis` | Redis `/data` | 999:1000 |
 | `/data/changhong/dtk/backups` | DTK `/var/lib/dtk/backups` | 10001:10001 |
 | `/data/changhong/dtk/media` | DTK `/var/lib/dtk/media` | 10001:10001 |
@@ -19,6 +19,8 @@
 自定义根目录：在部署目录的 `.env` 中写入 `CHANGHONG_DATA_DIR=/其他绝对路径`，并始终在同一目录使用 Compose。不设置时默认 `/data/changhong`。测试脚本会覆盖为独立临时目录，不会访问生产路径。
 
 ## 已用旧版本部署：先迁移，再换 YAML
+
+本节是旧命名卷迁移到主机目录，完整采集版保持 HA 镜像，使用下文固定旧版 YAML；不能同时切换标准镜像。旧 HA 数据目录是 `/data/changhong/dtk/postgres`，容器路径 `/home/postgres/pgdata/data`，UID:GID 为 1000:1000。
 
 **旧命名卷不会自动变成绑定目录。直接更换 YAML 会启动一个新的空数据库，看起来像数据丢失。** 旧数据此时仍在原卷中，应停机并正确迁移，不能删除旧卷。
 
@@ -81,7 +83,7 @@ copy_volume douyin-notify_dtk-media /data/changhong/dtk/media
 
 ```bash
 cd /data/changhong
-curl -fL https://raw.githubusercontent.com/PushyTao/notify/main/deploy/compose.full.yaml -o compose.new.yaml
+curl -fL https://raw.githubusercontent.com/PushyTao/notify/03250cf3ee84e6afaae08b5df7dd19c8e6e6c7fe/deploy/compose.full.yaml -o compose.new.yaml
 chmod 600 compose.new.yaml
 ```
 
@@ -101,6 +103,42 @@ docker compose ps -a
 用旧后台密码登录，确认博主、模型、记录、订阅者和 DTK 身份都存在。确认新实例正常且备份可用后，再自行决定旧卷的保留时间。本文不包含删除旧卷的命令。
 
 若启动失败，停止新实例后，可以用原 YAML 和原卷恢复旧部署；新旧实例不要同时发送邮件。切换后新产生的数据不会自动同步回旧卷。
+
+## 尚未正式使用的旧 HA 部署
+
+新版完整 YAML 使用 `timescale/timescaledb:2.32.0-pg17` 和独立的 `postgres-lite` 目录。两种数据库镜像的系统库、权限和目录布局不同，不能直接复制旧数据库目录到新路径。
+
+以下仅适用于**没有需要保留的 DTK 账号、Cookie、任务或采集数据**的部署。在原部署目录执行，保留长虹 `app` 目录、原 YAML 和密钥：
+
+```bash
+set -e
+cd /data/changhong
+docker compose stop
+cp -p compose.yaml "compose.ha.backup.$(date +%Y%m%d%H%M%S).yaml"
+curl -fL https://raw.githubusercontent.com/PushyTao/notify/main/deploy/compose.full.yaml -o compose.new.yaml
+chmod 600 compose.new.yaml
+```
+
+编辑 `compose.new.yaml`，从旧文件原样填入五项密码/密钥，并保留原端口。若检测到旧 HA 数据库且新库还未初始化，`init-data` 会主动停止，避免无意启动一个空库。确认不需要旧 DTK 数据后，将旧数据库和 Redis 目录改名保存，防止旧队列进入新数据库。默认根目录下执行：
+
+```bash
+set -e
+docker compose -f compose.new.yaml config --quiet
+if [ -d /data/changhong/dtk/postgres ]; then
+  mv /data/changhong/dtk/postgres "/data/changhong/dtk/postgres-ha-backup-$(date +%Y%m%d%H%M%S)"
+fi
+if [ -d /data/changhong/dtk/redis ]; then
+  mv /data/changhong/dtk/redis "/data/changhong/dtk/redis-ha-backup-$(date +%Y%m%d%H%M%S)"
+fi
+mv compose.new.yaml compose.yaml
+docker compose pull
+docker compose up -d --wait
+docker compose ps -a
+```
+
+自定义 `CHANGHONG_DATA_DIR` 时，将两个数据目录替换为实际根目录。长虹配置和记录继续使用 `app`；DTK 需按 README 重新初始化。旧目录和 YAML 均保留，不删除任何数据库文件。
+
+**已有 DTK 数据的部署**继续使用原 YAML 更新长虹镜像即可，无需为本次精简切换数据库。若要迁移，需要逻辑导出、在匹配版本的 TimescaleDB 上恢复并核对身份、任务和扩展；本次不提供自动迁移，不能只改镜像或复制数据目录。
 
 ## 日常更新与备份
 

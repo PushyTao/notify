@@ -7,6 +7,7 @@ import argparse
 import http.cookiejar
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import socket
@@ -78,6 +79,19 @@ def main():
             resolved = json.loads(compose('config', '--format', 'json', capture=True))
             mounts = resolved['services']['web']['volumes']
             assert any(v['type'] == 'bind' and v['target'] == '/data' for v in mounts), 'App data must use a host bind mount'
+            if args.full:
+                # A stale HA database must block a silent switch to an empty store.
+                legacy = runtime_data / 'dtk' / 'postgres'
+                legacy.mkdir(parents=True)
+                marker = legacy / 'PG_VERSION'
+                marker.write_text('17\n', encoding='utf-8')
+                probe = subprocess.run(command + ['run', '--rm', '--no-deps', 'init-data'],
+                                       env=env, capture_output=True, text=True, encoding='utf-8')
+                assert probe.returncode != 0 and 'Existing HA database detected' in probe.stderr + probe.stdout
+                assert marker.read_text(encoding='utf-8') == '17\n'
+                assert not (runtime_data / 'dtk' / 'postgres-lite').exists(), 'Old database guard initialized a new store'
+                marker.unlink()
+                legacy.rmdir()
             compose('up', '-d', '--no-build', '--wait', '--wait-timeout', '240')
             assert (runtime_data / 'app').is_dir(), 'Initializer did not create the host app directory'
             assert '长虹' in request('/'), 'Public page unavailable'
@@ -90,17 +104,31 @@ def main():
             if args.full:
                 compose('exec', '-T', 'worker', 'python', '-c',
                         "import urllib.request; urllib.request.urlopen('http://collector:8000/readyz',timeout=10)")
+                extensions = compose('exec', '-T', 'postgres', 'psql', '-U', 'dtk', '-d', 'dtk', '-Atc',
+                                     "SELECT extname FROM pg_extension WHERE extname IN ('timescaledb', 'pg_trgm')", capture=True)
+                assert set(extensions.split()) == {'timescaledb', 'pg_trgm'}, 'DTK database extensions missing'
+                compose('exec', '-T', 'postgres', 'psql', '-U', 'dtk', '-d', 'dtk', '-v', 'ON_ERROR_STOP=1', '-c',
+                        'CREATE TABLE notify_smoke_persistence (value integer); INSERT INTO notify_smoke_persistence VALUES (42);')
+                compose('up', '-d', '--no-deps', '--no-build', '--force-recreate', '--wait', '--wait-timeout', '120', 'postgres')
+                saved = compose('exec', '-T', 'postgres', 'psql', '-U', 'dtk', '-d', 'dtk', '-Atc',
+                                'SELECT value FROM notify_smoke_persistence', capture=True)
+                assert saved.strip() == '42', 'DTK database lost after PostgreSQL recreation'
+                compose('exec', '-T', 'postgres', 'psql', '-U', 'dtk', '-d', 'dtk', '-c', 'DROP TABLE notify_smoke_persistence;')
             # Recreate containers, retaining the data volume; login and data must survive.
             compose('up', '-d', '--no-build', '--force-recreate', '--wait', '--wait-timeout', '240', 'web', 'worker')
             request('/api/login', {'password': password})
             state = json.loads(request('/api/admin/state'))
             assert any(a['name'] == author['name'] for a in state['authors']), 'Data lost after recreation'
             print('PASS: host bind mount, directory initialization, public/admin pages, login, shared worker heartbeat, persisted data' +
-                  (', DTK migrations/readiness/internal connectivity' if args.full else ''), flush=True)
+                  (', HA data guard, DTK extensions/migrations/readiness, PostgreSQL persistence' if args.full else ''), flush=True)
         except Exception:
             compose('ps', '-a')
             # Avoid dumping DTK's one-time setup token into CI logs.
             compose('logs', '--tail=60', 'web', 'worker')
+            if args.full:
+                log = compose('logs', '--tail=35', 'migrate', capture=True)
+                log = re.sub(r'postgresql[^\s]*://[^\s]*', '[database URL redacted]', log)
+                print(log)
             raise
         finally:
             # Unique generated project; never touches a deployment's named volumes.

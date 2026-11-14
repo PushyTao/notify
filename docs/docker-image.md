@@ -4,6 +4,10 @@
 
 只需 Docker Engine、Docker Compose 2.24+ 和一份 YAML；无需 Git、Python、源码、构建命令或额外 `.env`。转写模型会在首次使用时下载并缓存，AI、邮箱和抖音账号凭据仍由你在后台提供。
 
+完整采集版使用不带 HA 工具的 `timescale/timescaledb:2.32.0-pg17`。DTK 强制依赖 TimescaleDB，不能直接改成普通 `postgres:17`。标准镜像的 amd64 下载体积约 579 MB，比原 HA 镜像约 939 MB 减少约 38%（2026-11-15 核对，不等于解压后的磁盘占用）。不部署本地采集时可用简版，省去 DTK、PostgreSQL 和 Redis。
+
+旧 HA 部署的数据目录不能直接挂载到新镜像；没有需要保留的采集数据时，按 [切换步骤](docker-storage.md#尚未正式使用的旧-ha-部署) 操作。已有数据的实例保留原 YAML。
+
 ## 选择部署文件
 
 | 文件 | 用途 |
@@ -118,7 +122,7 @@ docker compose up -d --no-deps --wait web worker
 
 `pull` 后必须 `up` 才会启用新代码。此更新命令不顺带更新 DTK、PostgreSQL 和 Redis。首次启动或整套停止后恢复，应使用不带 `--no-deps` 的 `docker compose up -d --wait`。需要固定镜像时，在同目录 `.env` 设置数字版本，例如 `NOTIFY_IMAGE=pushytao/notify:0.1.3`。保留已填写的 YAML，不要用空模板覆盖。
 
-主机数据位于 `/data/changhong/app`、`/data/changhong/dtk/{postgres,redis,backups,media}`；容器重建后继续使用这些目录。可在 `.env` 中用 `CHANGHONG_DATA_DIR` 修改根目录。目录布局、权限和旧卷迁移见 [存储说明](docker-storage.md)。更新只替换镜像中的代码，不要映射 `/app` 程序目录，也不要删除主机数据目录。
+主机数据位于 `/data/changhong/app`、`/data/changhong/dtk/{postgres-lite,redis,backups,media}`；容器重建后继续使用这些目录。可在 `.env` 中用 `CHANGHONG_DATA_DIR` 修改根目录。目录布局、权限和旧卷迁移见 [存储说明](docker-storage.md)。更新只替换镜像中的代码，不要映射 `/app` 程序目录，也不要删除主机数据目录。
 
 ## 备份
 

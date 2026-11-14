@@ -1,4 +1,4 @@
-# 长虹 + DTK v5.1.10：只需要本文件，无需克隆两个仓库或创建 .env。
+# 长虹 + DTK v5.1.10：使用标准 TimescaleDB，省去 HA 工具，无需克隆仓库或创建 .env。
 # 只需填写下方五个空字符串，各项使用不同的随机值。
 # 建议 openssl rand -hex 32 生成密钥，openssl rand -hex 24 生成密码。
 # 本文件含密码，请 chmod 600 compose.full.yaml，勿提交已填写的文件。
@@ -90,7 +90,9 @@ services:
         import os
         from pathlib import Path
         root = Path('/host-data')
-        for name, uid, gid in [('app',10001,10001), ('dtk',0,0), ('dtk/postgres',1000,1000), ('dtk/redis',999,1000), ('dtk/backups',10001,10001), ('dtk/media',10001,10001)]:
+        if (root / 'dtk/postgres/PG_VERSION').exists() and not (root / 'dtk/postgres-lite/PG_VERSION').exists():
+            raise SystemExit('Existing HA database detected. Keep the old YAML; see docs/docker-storage.md before switching. No data was changed.')
+        for name, uid, gid in [('app',10001,10001), ('dtk',0,0), ('dtk/postgres-lite',70,70), ('dtk/redis',999,1000), ('dtk/backups',10001,10001), ('dtk/media',10001,10001)]:
             p = root / name
             if p.is_symlink():
                 raise SystemExit('Refusing symlink: ' + str(p))
@@ -122,17 +124,20 @@ services:
       start_period: 60s
 
   postgres:
-    image: timescale/timescaledb-ha:pg17
+    # DTK 必须使用 TimescaleDB 扩展，不能直接换成 postgres:17。
+    image: timescale/timescaledb:2.32.0-pg17
+    user: "70:70"
     environment:
       POSTGRES_DB: dtk
       POSTGRES_USER: dtk
       POSTGRES_PASSWORD: *postgres-password
       POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      TS_TUNE_MAX_CONNS: "100"
     command: [postgres, -c, max_connections=100]
     volumes:
       - type: bind
-        source: ${CHANGHONG_DATA_DIR:-/data/changhong}/dtk/postgres
-        target: /home/postgres/pgdata/data
+        source: ${CHANGHONG_DATA_DIR:-/data/changhong}/dtk/postgres-lite
+        target: /var/lib/postgresql/data
         bind: {create_host_path: true}
     depends_on:
       init-data: {condition: service_completed_successfully}
@@ -143,7 +148,8 @@ services:
     stop_grace_period: 1m
     logging: *logging
     healthcheck:
-      test: [CMD-SHELL, "pg_isready -U dtk -d dtk"]
+      # 初始化期间的临时实例只开放 Unix socket；TCP 就绪后才允许 DTK 迁移。
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U dtk -d dtk"]
       interval: 10s
       timeout: 5s
       retries: 12
