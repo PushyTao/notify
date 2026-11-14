@@ -1,4 +1,4 @@
-"""Three independent lanes keep slow ASR from blocking polling or mail."""
+"""Independent lanes for collection, video processing, mail, and market quotes."""
 import argparse
 import logging
 import signal
@@ -8,6 +8,7 @@ import uuid
 
 from app.config import Settings, environment
 from app.db import Store
+from app.market import MarketService
 from app.security import safe_error
 from app.service import Service
 
@@ -15,10 +16,11 @@ logger = logging.getLogger('notify.worker')
 
 
 class Worker:
-    def __init__(self, store, settings, integrations):
+    def __init__(self, store, settings, integrations, *, market=None):
         self.store, self.settings, self.integrations = store, settings, integrations
         self.owner = uuid.uuid4().hex
         self.service = Service(store,settings)
+        self.market = MarketService(store) if market is None else market
         self.stop = threading.Event()
 
     def step(self, table):
@@ -48,8 +50,18 @@ class Worker:
             if not busy:
                 self.stop.wait(2)
 
+    def market_lane(self):
+        while not self.stop.is_set():
+            try:
+                self.market.refresh(stopped=self.stop.is_set)
+            except Exception as exc:
+                logger.error('Market refresh error: %s', type(exc).__name__)
+            # The shared lease stores the actual next poll time.
+            self.stop.wait(2)
+
     def run(self):
         lanes = [threading.Thread(target=self.lane,args=(table,),name=table,daemon=True) for table in ('authors','videos','deliveries')]
+        lanes.append(threading.Thread(target=self.market_lane, name='market', daemon=True))
         for lane in lanes:
             lane.start()
         try:

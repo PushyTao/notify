@@ -621,15 +621,15 @@ def send_email(recipient: str, record: dict, settings: dict) -> None:
         message = EmailMessage()
         message['From'], message['To'] = sender, target
         subject_name = ' '.join(fields[1][1].split())[:120]
-        message['Subject'] = f'抖音更新：{subject_name}'
+        message['Subject'] = f'长虹 · 视频更新：{subject_name}'
         digest = sha256(f"{record.get('video_id', '')}:{target.addr_spec.casefold()}".encode()).hexdigest()
         message['Message-ID'] = f'<{digest}@{sender.domain.encode("idna").decode()}>'
-        message.set_content('\n\n'.join(f'{label}：\n{value}' for label, value in fields))
+        message.set_content('\n\n'.join(f'{label}：\n{value}' for label, value in fields) + '\n\n长虹 · 财经博主关注')
         html = ''.join(f'<dt>{label}</dt><dd style="white-space:pre-wrap">{escape(value)}</dd>'
                        for label, value in fields[:-1])
         link = escape(url, quote=True)
         message.add_alternative(f'<html><body><dl>{html}<dt>原视频链接</dt>'
-                                f'<dd><a href="{link}">{link}</a></dd></dl></body></html>', subtype='html')
+                                f'<dd><a href="{link}">{link}</a></dd></dl><p>长虹 · 财经博主关注</p></body></html>', subtype='html')
         tls = settings.get('tls') or 'starttls'
         host = _text(settings.get('host'))
         port = int(settings.get('port') or (465 if tls == 'ssl' else 587))

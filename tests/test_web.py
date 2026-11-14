@@ -78,6 +78,25 @@ def test_public_order_sort_and_no_admin_link(client):
     assert positions == sorted(positions)
 
 
+def test_finance_home_has_fixed_market_cards_and_independent_total(client):
+    from bs4 import BeautifulSoup
+    page = BeautifulSoup(client.get('/').text, 'html.parser')
+    assert '长虹' in page.title.text
+    panel = page.select_one('[data-market-panel]')
+    assert panel is not None
+    assert [card.select_one('h3').text for card in panel.select('[data-market-item]')] == [
+        '上证指数', '深成指', '创业板指', '科创综指', '科创50',
+        '沪深300', '中证1000', '证券板块', '银行板块',
+    ]
+    total = panel.select_one('[data-market-total]')
+    assert '沪深成交额' in total.get_text()
+    assert total.find_parent('details') is None
+    assert '等待行情更新' in panel.get_text()
+    assert '暂无可比数据' in panel.get_text()
+    assert not page.select('a[href="/admin"]')
+    assert page.select_one('script[src="/static/market.js"][defer]')
+
+
 def test_chunked_body_limit_without_content_length(client):
     chunks = (part for part in [b'{"password":"', b'x'*70000, b'"}'])
     response = client.post('/api/login', content=chunks, headers={'Content-Type':'application/json'})

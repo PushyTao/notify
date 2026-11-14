@@ -1,6 +1,7 @@
 """SQLite persistence. Every claim and completion is a short transaction."""
 from contextlib import contextmanager
 from pathlib import Path
+import json
 import sqlite3
 import time
 
@@ -42,6 +43,15 @@ CREATE TABLE IF NOT EXISTS deliveries (
  UNIQUE(video_id, subscriber_id)
 );
 CREATE TABLE IF NOT EXISTS runtime (key TEXT PRIMARY KEY, value REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS market_cache (
+ key TEXT PRIMARY KEY, payload TEXT NOT NULL, fetched_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS market_refresh (
+ key TEXT PRIMARY KEY, last_attempt REAL NOT NULL, failed INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS market_lease (
+ id INTEGER PRIMARY KEY CHECK(id=1), owner TEXT, lease_until REAL NOT NULL, next_run REAL NOT NULL
+);
 '''
 
 
@@ -72,6 +82,56 @@ class Store:
         with self.connect() as db:
             row = db.execute(sql, params).fetchone()
             return dict(row) if row else None
+
+    def claim_market(self, owner, now, lease_seconds):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('INSERT OR IGNORE INTO market_lease VALUES(1,NULL,0,0)')
+            return db.execute(
+                'UPDATE market_lease SET owner=?,lease_until=? WHERE id=1 AND lease_until<=? AND next_run<=?',
+                (owner, now+lease_seconds, now, now),
+            ).rowcount == 1
+
+    def release_market(self, owner):
+        with self.connect() as db:
+            db.execute('UPDATE market_lease SET owner=NULL,lease_until=0 WHERE id=1 AND owner=?', (owner,))
+
+    def finish_market(self, owner, results, *, now, next_run):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            now = time.time() if now is None else now
+            acquired = db.execute(
+                'UPDATE market_lease SET owner=NULL,lease_until=0,next_run=? WHERE id=1 AND owner=? AND lease_until>?',
+                (next_run, owner, now),
+            )
+            if not acquired.rowcount:
+                return False
+            for key, payload in results.items():
+                if payload is not None:
+                    cached = db.execute('SELECT payload FROM market_cache WHERE key=?', (key,)).fetchone()
+                    if cached:
+                        old = json.loads(cached['payload'])
+                        if (payload.get('trade_date', ''), payload.get('as_of', '')) < (
+                                old.get('trade_date', ''), old.get('as_of', '')):
+                            payload = None
+                    if payload is not None:
+                        db.execute(
+                            'INSERT INTO market_cache VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET '
+                            'payload=excluded.payload,fetched_at=excluded.fetched_at',
+                            (key, json.dumps(payload, ensure_ascii=False, allow_nan=False), now),
+                        )
+                db.execute(
+                    'INSERT INTO market_refresh VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET '
+                    'last_attempt=excluded.last_attempt,failed=excluded.failed',
+                    (key, now, payload is None),
+                )
+            return True
+
+    def market_rows(self):
+        return self.all(
+            'SELECT r.key,r.last_attempt,r.failed,c.payload,c.fetched_at FROM market_refresh r '
+            'LEFT JOIN market_cache c ON r.key=c.key'
+        )
 
     def claim(self, table, owner, now=None, lease_seconds=300):
         if table not in ('authors', 'videos', 'deliveries'):

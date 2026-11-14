@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% from "_record.html" import show_record %}
-{% block title %}更新记录 · 讯笺{% endblock %}
+{% block title %}财经关注 · 长虹{% endblock %}
+{% block body_class %}finance-page{% endblock %}
+{% block head %}<script src="/static/market.js" defer></script>{% endblock %}
 {% block content %}
 <section class="page-intro feed-intro" aria-labelledby="feed-heading">
   <div>
     <h1 id="feed-heading">更新记录</h1>
-    <p class="muted">抖音视频的内容总结与语音转写</p>
+    <p class="muted">关注财经博主的视频更新，阅读内容总结与语音转写。</p>
   </div>
   <form class="filter-form" action="/" method="get">
     <label for="author-filter">按博主筛选</label>
@@ -20,6 +22,9 @@
     </div>
   </form>
 </section>
+<div class="finance-layout">
+{% include "_market.html" %}
+<section class="feed-column" aria-label="视频更新记录">
 <div class="feed-info">
   <p>共 {{ total }} 条记录</p>
   <p>北京时间 · 最新在前</p>
@@ -46,4 +51,6 @@
   {% else %}<span class="button disabled" aria-disabled="true">下一页</span>{% endif %}
 </nav>
 {% endif %}
+</section>
+</div>
 {% endblock %}

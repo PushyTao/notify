@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import Settings, DEFAULT_PROMPT, environment
 from app.db import Store
+from app.market import MarketService
 from app.middleware import RequestSizeLimit
 from app.schemas import Author, Subscriber, ModelConfig, Login, PasswordChange, EmailInput, CookieImport, validate_settings
 from app.security import hash_password, verify_password, token_hash, safe_error
@@ -89,6 +90,10 @@ def create_app(db_path=None, secret_key=None, admin_password=None, secure_cookie
     def health():
         store.one('SELECT 1')
         return {'ok': True}
+
+    @app.get('/api/market')
+    def market():
+        return MarketService(store).snapshot()
 
     @app.get('/')
     def index(request: Request, page: int = 1, author_id: str = ''):
