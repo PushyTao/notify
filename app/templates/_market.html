@@ -10,7 +10,7 @@
   <p class="market-meta" data-market-field="date">行情日期 — · 截至 —（北京时间）</p>
   <p class="market-meta" data-market-field="baseline">同期基准 —</p>
   <p class="market-meta" data-market-field="source">数据源 —</p>
-  <p class="market-meta" data-market-field="scope">{% if total %}沪深 A 股独立统计，不含北交所与 B 股；不对九项行情求和。{% else %}统计口径待更新{% endif %}</p>
+  <p class="market-meta" data-market-field="scope">{% if total %}沪深 A 股独立统计，不含北交所与 B 股；不对各项行情求和。{% else %}统计口径待更新{% endif %}</p>
   <p class="market-card-status" data-market-field="status">等待行情更新</p>
 </article>
 {% endmacro %}
@@ -20,9 +20,9 @@
   <p class="market-meta market-cache" data-market-cache>本站缓存 · 每 60 秒检查更新</p>
   {{ market_card('沪深成交额', total=true) }}
   <details class="market-details" data-market-details open>
-    <summary>指数与板块 <span>9 项 · 展开 / 收起</span></summary>
+    <summary>指数与板块 <span>10 项 · 展开 / 收起</span></summary>
     <div class="market-cards">
-    {% for name in ['上证指数', '深成指', '创业板指', '科创综指', '科创50', '沪深300', '中证1000', '证券板块', '银行板块'] %}
+    {% for name in ['上证指数', '深成指', '创业板指', '科创综指', '科创50', '沪深300', '中证1000', '证券板块', '银行板块', '半导体板块'] %}
     {{ market_card(name) }}
     {% endfor %}
     </div>

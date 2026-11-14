@@ -44,7 +44,8 @@ def em_payload(days):
 
 
 def calculate(payload, code, now=None):
-    instrument = provider.INSTRUMENTS[code]
+    instrument = (provider.Instrument('securities', '证券板块', code, provider.EASTMONEY,
+                  provider.BOARD_SCOPE, ('证券Ⅱ',)) if code == '90.BK0473' else provider.INSTRUMENTS[code])
     return market.calculate_item(instrument, provider.parse_series(instrument, payload),
                                  now or at(MONDAY, '09:31'))
 
@@ -159,7 +160,9 @@ def test_provider_uses_fixed_eastmoney_endpoint_and_retries_transport_once(monke
 
     client = httpx.AsyncClient
     monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: client(transport=httpx.MockTransport(respond), **kw))
-    instrument = provider.INSTRUMENTS['90.BK0473']
+    instrument = provider.Instrument('securities', '证券板块', '90.BK0473', provider.EASTMONEY,
+                                     provider.BOARD_SCOPE, ('证券Ⅱ',))
+    monkeypatch.setitem(provider.INSTRUMENTS, instrument.code, instrument)
     sessions = provider.PublicMarketProvider().fetch(instrument)
     assert sessions[0].minutes[570].amount == 100_000_000
     assert len(sent) == 2
@@ -300,7 +303,7 @@ def test_cache_migration_and_access_from_separate_web_store(tmp_path, monkeypatc
     assert response.headers['cache-control'] == 'no-store'
     assert response.json()['status'] == 'unavailable'
     assert [x['name'] for x in response.json()['items']] == [
-        '上证指数', '深成指', '创业板指', '科创综指', '科创50', '沪深300', '中证1000', '证券板块', '银行板块',
+        '上证指数', '深成指', '创业板指', '科创综指', '科创50', '沪深300', '中证1000', '证券板块', '银行板块', '半导体板块',
     ]
     feed = Feed({'sh000001': tt_payload('sh000001', '上证指数', {FRIDAY: [('0930', 100_000_000)]})})
     service = market.MarketService(store, feed)
@@ -412,7 +415,7 @@ def test_real_tencent_replay_against_independent_decimal_totals(tmp_path, hm, cl
     saturday = at('2026-11-14', '10:00')
     snapshot = service.snapshot(saturday if hm == '15:00' else at(FRIDAY, clock))
     assert snapshot['status'] == 'partial'
-    assert [item['status'] for item in snapshot['items']] == ['unavailable']*9
+    assert [item['status'] for item in snapshot['items']] == ['unavailable']*10
     result = snapshot['total']
     assert (result['trade_date'], result['previous_date'], result['as_of']) == (FRIDAY, THURSDAY, hm)
     assert result['amount_yi'] == pytest.approx(amount, abs=1e-10, rel=0)

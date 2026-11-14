@@ -6,7 +6,7 @@ const { join } = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const source = readFileSync(join(__dirname, "../app/static/market.js"), "utf8");
-const names = ["上证指数", "深成指", "创业板指", "科创综指", "科创50", "沪深300", "中证1000", "证券板块", "银行板块"];
+const names = ["上证指数", "深成指", "创业板指", "科创综指", "科创50", "沪深300", "中证1000", "证券板块", "银行板块", "半导体板块"];
 
 // Minimal browser boundary: the production renderer creates and changes these nodes.
 class Element {

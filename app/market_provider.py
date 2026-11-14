@@ -14,9 +14,13 @@ TENCENT_URL = 'https://web.ifzq.gtimg.cn/appstock/app/day/query'
 EASTMONEY_URL = 'https://push2.eastmoney.com/api/qt/stock/trends2/get'
 TENCENT = '腾讯财经'
 EASTMONEY = '东方财富'
+THS = '同花顺'
+THS_URL = 'https://d.10jqka.com.cn'
 INDEX_SCOPE = '腾讯财经指数行情统计口径'
 BOARD_SCOPE = '东方财富行业板块行情统计口径'
+THS_SCOPE = '同花顺行业板块统计口径，与东方财富行业分类不同'
 MAX_RESPONSE_BYTES = 256 * 1024
+MAX_HISTORY_BYTES = 4 * 1024 * 1024
 REQUEST_SECONDS = 4
 DNS_SLOTS = BoundedSemaphore(2)
 
@@ -39,8 +43,9 @@ ITEMS = (
     Instrument('star50', '科创50', 'sh000688', TENCENT, INDEX_SCOPE),
     Instrument('csi300', '沪深300', 'sh000300', TENCENT, INDEX_SCOPE),
     Instrument('csi1000', '中证1000', 'sh000852', TENCENT, INDEX_SCOPE),
-    Instrument('securities', '证券板块', '90.BK0473', EASTMONEY, BOARD_SCOPE, ('证券Ⅱ',)),
-    Instrument('banks', '银行板块', '90.BK0475', EASTMONEY, BOARD_SCOPE, ('银行Ⅱ',)),
+    Instrument('securities', '证券板块', '881157', THS, THS_SCOPE, ('证券',)),
+    Instrument('banks', '银行板块', '881155', THS, THS_SCOPE, ('银行',)),
+    Instrument('semiconductors', '半导体板块', '881121', THS, THS_SCOPE, ('半导体',)),
 )
 TOTAL_INPUTS = (
     Instrument('shanghai_a', 'A股指数', 'sh000002', TENCENT, '上海 A 股'),
@@ -56,7 +61,7 @@ ALLOWED_MINUTES = {*TRADING_MINUTES, REOPEN}
 @dataclass(frozen=True)
 class Minute:
     price: Decimal
-    amount: Decimal  # cumulative yuan for this session for both providers
+    amount: Decimal  # cumulative yuan for this session, normalized across providers
 
 
 @dataclass(frozen=True)
@@ -173,9 +178,40 @@ def _eastmoney(instrument, payload):
             for day, vals in sorted(by_day.items())]
 
 
+def _ths(instrument, payload):
+    node = payload['time']['bk_' + instrument.code]
+    _identity(instrument, instrument.code, node['name'])
+    day = _date(node['date'], compact=True)
+    previous_close = _number(node['pre'], positive=True)
+    rows = []
+    for line in node['data'].split(';'):
+        clock, price, amount, _average, _volume = line.split(',')
+        rows.append((_minute(clock), price, amount))
+    current = _session(day, previous_close, rows, increments=True)
+    by_day = {}
+    history = payload['history']['data']
+    if not isinstance(history, str) or history.count(';') >= 100_000:
+        raise ValueError('Invalid THS history')
+    for line in history.split(';') if history else []:
+        fields = line.split(',')
+        stamp = fields[0]
+        if len(stamp) != 12:
+            raise ValueError('Invalid THS history timestamp')
+        session_day = _date(stamp[:8], compact=True)
+        if session_day < day:
+            by_day.setdefault(session_day, []).append((_minute(stamp[8:]), fields[4], fields[6]))
+    if not by_day:
+        return [current]
+    prior = _session(max(by_day), None, by_day[max(by_day)], increments=True)
+    # A stale/mismatched historical file must never supply a comparison day.
+    if 900 not in prior.minutes or prior.minutes[900].price != previous_close:
+        return [current]
+    return [prior, current]
+
+
 def parse_series(instrument, payload):
     try:
-        return (_tencent if instrument.source == TENCENT else _eastmoney)(instrument, payload)
+        return {TENCENT: _tencent, EASTMONEY: _eastmoney, THS: _ths}[instrument.source](instrument, payload)
     except (KeyError, TypeError, IndexError, AttributeError, InvalidOperation) as exc:
         raise ValueError('Malformed market payload') from exc
 
@@ -228,6 +264,9 @@ def _market_loop():
 class PublicMarketProvider:
     """One retry for transport errors; malformed data is rejected without retry."""
 
+    def __init__(self):
+        self._ths_history = {}  # at most one previous-day file per fixed board
+
     def fetch(self, instrument):
         # Bound DNS, headers, and body as a single attempt, in addition to the
         # HTTP I/O timeout. Called only by the dedicated synchronous worker.
@@ -238,7 +277,7 @@ class PublicMarketProvider:
             raise ValueError('Unknown market instrument')
         if instrument.source == TENCENT:
             url, params, headers = TENCENT_URL, {'code': instrument.code}, {}
-        else:
+        elif instrument.source == EASTMONEY:
             url = EASTMONEY_URL
             params = {
                 'secid': instrument.code, 'ndays': 2, 'iscr': 0, 'iscca': 0,
@@ -249,6 +288,8 @@ class PublicMarketProvider:
             headers = {'Referer': f'https://quote.eastmoney.com/bk/{instrument.code}.html'}
         for attempt in range(2):
             try:
+                if instrument.source == THS:
+                    return await self._fetch_ths(instrument)
                 async with asyncio.timeout(REQUEST_SECONDS):
                     payload = await self._request(url, params, headers)
                 break
@@ -257,8 +298,43 @@ class PublicMarketProvider:
                     raise
         return parse_series(instrument, payload)
 
+    async def _fetch_ths(self, instrument):
+        deadline = asyncio.get_running_loop().time() + REQUEST_SECONDS
+        code = instrument.code
+        headers = {'User-Agent': 'Mozilla/5.0', 'Referer': f'https://q.10jqka.com.cn/thshy/detail/code/{code}/'}
+
+        async def request(path, limit=MAX_RESPONSE_BYTES):
+            callback = 'quotebridge_' + path.removesuffix('.js').replace('/', '_')
+            return await self._request(f'{THS_URL}/{path}', {}, headers, callback=callback, limit=limit)
+
+        async with asyncio.timeout_at(deadline):
+            current = await request(f'v6/time/bk_{code}/last.js')
+        payload = {'time': current, 'history': {'data': ''}}
+        sessions = parse_series(instrument, payload)
+        day = sessions[-1].day
+        cached = self._ths_history.get(code)
+        if cached and cached[0] == day:
+            payload['history'] = cached[1]
+            return parse_series(instrument, payload)
+        try:
+            async with asyncio.timeout_at(deadline):
+                payload['history'] = await request(f'v6/line/bk_{code}/60/{day.year}.js', MAX_HISTORY_BYTES)
+                sessions = parse_series(instrument, payload)
+                # The first trading day of a year needs the preceding year's file.
+                if len(sessions) == 1 and day.month == 1:
+                    payload['history'] = await request(f'v6/line/bk_{code}/60/{day.year-1}.js', MAX_HISTORY_BYTES)
+                    sessions = parse_series(instrument, payload)
+        except (httpx.HTTPError, ValueError, TimeoutError):
+            # Current turnover remains useful even when history is unavailable.
+            return parse_series(instrument, {'time': current, 'history': {'data': ''}})
+        if len(sessions) == 2 and all(m in sessions[0].minutes for m in TRADING_MINUTES):
+            prior = sessions[0].day.strftime('%Y%m%d')
+            trimmed = {'data': ';'.join(row for row in payload['history']['data'].split(';') if row.startswith(prior))}
+            self._ths_history[code] = (day, trimmed)
+        return sessions
+
     @staticmethod
-    async def _request(url, params, headers):
+    async def _request(url, params, headers, *, callback=None, limit=MAX_RESPONSE_BYTES):
         async with httpx.AsyncClient(timeout=REQUEST_SECONDS, follow_redirects=False, trust_env=False) as client:
             async with client.stream('GET', url, params=params,
                                      headers={'Accept-Encoding': 'identity', **headers}) as response:
@@ -267,7 +343,14 @@ class PublicMarketProvider:
                     raise ValueError('Unexpected market response encoding')
                 body = bytearray()
                 async for chunk in response.aiter_raw():
-                    if len(body) + len(chunk) > MAX_RESPONSE_BYTES:
+                    if len(body) + len(chunk) > limit:
                         raise ValueError('Market response too large')
                     body.extend(chunk)
+        if callback:
+            # Validate the exact requested symbol/path; never execute JSONP.
+            text = body.decode('utf-8').strip().removesuffix(';').rstrip()
+            prefix = callback + '('
+            if not text.startswith(prefix) or not text.endswith(')'):
+                raise ValueError('Mismatched THS JSONP callback')
+            body = text[len(prefix):-1]
         return json.loads(body, parse_float=Decimal)

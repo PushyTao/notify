@@ -111,7 +111,8 @@ class Store:
                     cached = db.execute('SELECT payload FROM market_cache WHERE key=?', (key,)).fetchone()
                     if cached:
                         old = json.loads(cached['payload'])
-                        if (payload.get('trade_date', ''), payload.get('as_of', '')) < (
+                        same_source = (payload.get('source'), payload.get('code')) == (old.get('source'), old.get('code'))
+                        if same_source and (payload.get('trade_date', ''), payload.get('as_of', '')) < (
                                 old.get('trade_date', ''), old.get('as_of', '')):
                             payload = None
                     if payload is not None:

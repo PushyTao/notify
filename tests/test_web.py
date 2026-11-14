@@ -86,7 +86,7 @@ def test_finance_home_has_fixed_market_cards_and_independent_total(client):
     assert panel is not None
     assert [card.select_one('h3').text for card in panel.select('[data-market-item]')] == [
         '上证指数', '深成指', '创业板指', '科创综指', '科创50',
-        '沪深300', '中证1000', '证券板块', '银行板块',
+        '沪深300', '中证1000', '证券板块', '银行板块', '半导体板块',
     ]
     total = panel.select_one('[data-market-total]')
     assert '沪深成交额' in total.get_text()

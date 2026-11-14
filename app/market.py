@@ -8,14 +8,14 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from app.market_provider import (
-    EASTMONEY, ITEMS, TENCENT, TENCENT_URL, TOTAL_INPUTS, TRADING_MINUTES, Instrument,
+    EASTMONEY, THS, ITEMS, TENCENT, TENCENT_URL, TOTAL_INPUTS, TRADING_MINUTES, Instrument,
     PublicMarketProvider,
 )
 
 logger = logging.getLogger('notify.market')
 SHANGHAI = ZoneInfo('Asia/Shanghai')
 YI = Decimal(100_000_000)
-LEASE_SECONDS = 120  # eleven fixed instruments, at most two four-second attempts each
+LEASE_SECONDS = 120  # twelve fixed instruments, at most two four-second attempts each
 OPEN, LUNCH, AFTERNOON, CLOSE = 570, 690, 780, 900
 TOTAL = Instrument('total', '沪深成交额', 'sh000002+sz399107', TENCENT,
                    '腾讯财经沪深 A 股成交额，不含 B 股和北交所')
@@ -101,7 +101,7 @@ def calculate_item(instrument, sessions, now):
     point = current.minutes[cutoff]
     amount_fields = (
         {'amount_yi': None, 'delta_yi': None, 'delta_pct': None, 'message': '当日分钟缺失，累计成交额不可用'}
-        if instrument.source == EASTMONEY and not _complete(current, cutoff)
+        if instrument.source in (EASTMONEY, THS) and not _complete(current, cutoff)
         else _amount_fields(point.amount, _comparison(window))
     )
     return {
@@ -225,6 +225,11 @@ class MarketService:
         def view(instrument):
             row = rows.get(instrument.key)
             item = _empty(instrument) if not row or not row['payload'] else json.loads(row['payload'])
+            if item['code'] != instrument.code or item['source'] != instrument.source:
+                # Source changes must not relabel or reuse another classification's cache.
+                item = _empty(instrument)
+                item['message'] = '数据源已切换，等待新行情'
+                return item
             if row:
                 item['fetched_at'] = row['fetched_at']
                 if item['status'] == 'ready':
@@ -256,7 +261,7 @@ class MarketService:
         if not ready and rows:
             message += '；数据源暂不可用'
         return {
-            'source': '腾讯财经 / 东方财富', 'source_url': TENCENT_URL,
+            'source': '腾讯财经 / 同花顺', 'source_url': TENCENT_URL,
             'fetched_at': max((item['fetched_at'] for item in ready), default=None),
             'stale': any(item['stale'] for item in ready),
             'status': 'ready' if len(ready) == len(items)+1 else 'partial' if ready else 'unavailable',
