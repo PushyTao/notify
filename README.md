@@ -19,7 +19,7 @@
 
 ## 拉取镜像部署（推荐）
 
-镜像：[pushytao/notify:0.1.0](https://hub.docker.com/r/pushytao/notify/tags)，支持 **Linux amd64（x86_64）**。无需下载源码、安装 Python 或在服务器构建，只需一份 YAML。以下步骤默认使用完整采集版。
+镜像：[pushytao/notify:latest](https://hub.docker.com/r/pushytao/notify/tags)，支持 **Linux amd64（x86_64）**。`main` 更新后由 GitHub Actions 测试并发布镜像；服务器无需下载源码、安装 Python 或现场构建，只需一份 YAML。以下步骤默认使用完整采集版。
 
 ### 1. 准备 Docker 和端口
 
@@ -43,11 +43,12 @@ docker compose version
 
 ### 2. 下载部署 YAML
 
-在服务器上创建一个新的部署目录：
+在服务器上创建一个新的部署目录。以下使用 root 管理 `/data/changhong`；已有命名卷部署请先阅读 [迁移说明](docs/docker-storage.md)，不要直接替换旧 YAML 启动空数据库。
 
 ```bash
-mkdir -p ~/changhong
-cd ~/changhong
+sudo -i
+mkdir -p /data/changhong
+cd /data/changhong
 curl -fL https://raw.githubusercontent.com/PushyTao/notify/main/deploy/compose.full.yaml -o compose.yaml
 chmod 600 compose.yaml
 ```
@@ -102,7 +103,20 @@ docker compose up -d --wait
 docker compose ps -a
 ```
 
-首次启动会自动创建持久化卷和数据库。完整版本中，`migrate` 容器退出码为 **0** 是正常现象，表示数据库迁移成功；其他长期服务应为 running/healthy。
+首次启动由 `init-data` 自动创建主机目录、设置权限，再初始化数据库。`init-data` 以及完整版的 `migrate` 容器退出码为 **0** 是正常现象；其他长期服务应为 running/healthy。
+
+数据采用主机目录映射，不再存放在 Docker 自动管理的命名卷中：
+
+| 主机目录 | 内容 |
+| --- | --- |
+| `/data/changhong/compose.yaml` | 你保存的部署配置及密钥 |
+| `/data/changhong/app` | 长虹 SQLite 数据库、转写模型缓存 |
+| `/data/changhong/dtk/postgres` | DTK PostgreSQL 数据 |
+| `/data/changhong/dtk/redis` | Redis 持久化数据 |
+| `/data/changhong/dtk/backups` | DTK 备份 |
+| `/data/changhong/dtk/media` | DTK 媒体目录 |
+
+简版只创建应用目录。容器内仍使用原来的路径，业务进程以非 root 用户运行，只有一次性的目录初始化容器使用 root。不要映射或覆盖镜像中的 `/app` 程序目录，更新代码通过拉取镜像完成。如需自定义根目录，在同一部署目录的 `.env` 设置 `CHANGHONG_DATA_DIR=/你的目录`，之后所有 Compose 命令都使用这份配置。
 
 - 前台：`http://服务器IP:8888/`
 - 后台：`http://服务器IP:8888/admin`
@@ -177,14 +191,20 @@ docker compose stop
 docker compose up -d --wait
 ```
 
-升级前先按下一步备份，将 YAML 中的 `pushytao/notify:0.1.0` 改为需要升级的版本，再执行：
+默认 YAML 使用 `pushytao/notify:latest`。代码推送 `main` 且 [自动发布流程](https://github.com/PushyTao/notify/actions/workflows/docker-publish.yml) 成功后，服务器先按下一步备份，再执行以下命令更新长虹；不顺带升级 DTK、数据库或 Redis：
 
 ```bash
-docker compose pull
-docker compose up -d --wait
+cd /data/changhong
+docker compose pull init-data web worker
+docker compose up -d --no-deps --wait web worker
+docker compose ps -a
 ```
 
-生产使用建议固定版本，另提供 `latest` 标签。保留原来的密码、密钥、项目名和数据卷，不要用新下载的空模板覆盖自己的 YAML。**不要执行 `docker compose down -v`，它会删除持久化数据。**
+`pull` 只下载镜像，必须执行 `up` 才会替换运行中的容器。这里的更新命令用于已经正常运行的部署；首次启动或整套服务停止后，使用不带 `--no-deps` 的 `docker compose up -d --wait`。
+
+需要固定版本或回退时，在 `.env` 配置 `NOTIFY_IMAGE=pushytao/notify:sha-完整提交SHA`（也可使用发布的版本号），再执行同样的拉取和重建命令。涉及数据库结构变化的版本不能仅靠旧镜像保证回退，应结合发布说明及升级前备份。
+
+更新无需修改端口、密钥或数据目录。不要用下载的空 YAML 覆盖自己的配置，也不要删除 `/data/changhong`。旧命名卷尚未迁移时，更不能执行 `docker compose down -v`。
 
 ### 8. 备份
 
@@ -210,6 +230,17 @@ docker compose exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -
 
 独立版说明及维护者的镜像构建、发布命令见 [镜像部署说明](docs/docker-image.md)。
 
+### 9. GitHub Actions 自动发布配置
+
+工作流文件：[docker-publish.yml](.github/workflows/docker-publish.yml)。一次性在 [仓库 Actions Secrets](https://github.com/PushyTao/notify/settings/secrets/actions) 添加 `DOCKERHUB_TOKEN`，值为 Docker Hub `pushytao` 账号具有 Read & Write 权限的访问令牌；用户名已在工作流中设置，无需把令牌写入 YAML 或发送到聊天。
+
+- 推送 `main`：运行 Python、前端测试，构建 Linux amd64 镜像，验证简版与完整采集版的启动、绑定目录和重建持久化，通过后发布 `latest`、`sha-完整提交SHA`。
+- 推送新标签 `vX.Y.Z`：执行相同验证后发布 `X.Y.Z` 和 SHA 标签；不会用旧版本覆盖 `latest`，也不允许复用已发布的版本号。
+- Pull Request：只测试和构建，不使用发布凭据、不推送镜像。
+- 手动触发：Actions → 测试并发布 Docker 镜像 → Run workflow，选择 `main`；也可在配置好 Secret 后重新运行失败的发布任务。
+
+同一分支串行构建；若验证结束时 main 已有更新提交，本次不覆盖 latest。发布的是实际通过启动验证的同一镜像。发布失败时旧镜像仍可使用；服务器不会自动重启，需主动执行前面的更新命令。
+
 ## 从源码构建 Docker 镜像
 
 本节用于需要自行修改源码的部署；已按上面拉取镜像启动的用户无需执行。在克隆本仓库后的根目录首次配置：
@@ -231,7 +262,7 @@ docker compose ps
 - `APP_PORT` 控制宿主端口；`BIND_HOST=127.0.0.1` 可将应用仅绑定本机。
 - 默认仅启动应用 Web/Worker，尚未配置采集、模型、SMTP 时不会产生真实记录或通知。
 
-Web 和 Worker 共用持久化卷 `douyin-notify_notify-data`。容器使用非 root 用户，转写模型缓存也保存在数据卷中。首次下载转写模型需要可访问 Hugging Face；下载耗时和识别速度取决于网络及 CPU。建议先预留数 GB 内存，处理较多视频时再按监测结果调整。
+Web 和 Worker 共用主机目录 `/data/changhong/app`，可在 `.env` 中用 `CHANGHONG_DATA_DIR` 指定其他根目录。`init-data` 自动初始化目录权限，业务容器使用非 root 用户，转写模型缓存也保存在映射目录中。已有旧命名卷安装需先按 [迁移说明](docs/docker-storage.md) 迁移。首次下载模型需要访问 Hugging Face；下载耗时和识别速度取决于网络及 CPU。
 
 ## 源码部署的采集接入和首次配置
 

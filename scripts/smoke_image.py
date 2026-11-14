@@ -1,7 +1,7 @@
 """Exercise the shipped YAML against a real Docker engine, without source mounts.
 
 Requires only Python's standard library and Docker Compose. Each run uses a unique
-project, random credentials and loopback ports. Only its own volumes are removed.
+project, random credentials, temporary bind mounts and loopback ports.
 """
 import argparse
 import http.cookiejar
@@ -24,7 +24,7 @@ def free_port():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--full', action='store_true', help='Also start and verify DTK')
-    parser.add_argument('--image', default='pushytao/notify:0.1.0')
+    parser.add_argument('--image', default='pushytao/notify:latest')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     source = root / 'deploy' / ('compose.full.yaml' if args.full else 'compose.image.yaml')
@@ -46,6 +46,9 @@ def main():
         env.pop(key, None)
 
     with tempfile.TemporaryDirectory(prefix=project) as directory:
+        runtime_data = Path(directory) / 'data'
+        runtime_data.mkdir()
+        env['CHANGHONG_DATA_DIR'] = runtime_data.as_posix()
         path = Path(directory) / 'compose.yaml'
         path.write_text(config, encoding='utf-8')
         command = ['docker', 'compose', '-p', project, '-f', str(path)]
@@ -72,7 +75,11 @@ def main():
 
         try:
             compose('config', '--quiet')
+            resolved = json.loads(compose('config', '--format', 'json', capture=True))
+            mounts = resolved['services']['web']['volumes']
+            assert any(v['type'] == 'bind' and v['target'] == '/data' for v in mounts), 'App data must use a host bind mount'
             compose('up', '-d', '--no-build', '--wait', '--wait-timeout', '240')
+            assert (runtime_data / 'app').is_dir(), 'Initializer did not create the host app directory'
             assert '长虹' in request('/'), 'Public page unavailable'
             assert request('/admin'), 'Admin page unavailable'
             csrf = json.loads(request('/api/login', {'password': password}))['csrf']
@@ -88,7 +95,7 @@ def main():
             request('/api/login', {'password': password})
             state = json.loads(request('/api/admin/state'))
             assert any(a['name'] == author['name'] for a in state['authors']), 'Data lost after recreation'
-            print('PASS: public/admin pages, login, shared worker heartbeat, persisted data' +
+            print('PASS: host bind mount, directory initialization, public/admin pages, login, shared worker heartbeat, persisted data' +
                   (', DTK migrations/readiness/internal connectivity' if args.full else ''), flush=True)
         except Exception:
             compose('ps', '-a')
@@ -98,6 +105,15 @@ def main():
         finally:
             # Unique generated project; never touches a deployment's named volumes.
             compose('down', '--volumes', '--remove-orphans')
+            # Linux containers create files with their own UID. Permit the host's
+            # test user to remove only this run's temporary directory afterwards.
+            assert runtime_data.resolve().parent == Path(directory).resolve()
+            subprocess.run([
+                'docker', 'run', '--rm', '--user', '0:0', '--read-only',
+                '--mount', f'type=bind,src={runtime_data.resolve()},dst=/cleanup',
+                '--entrypoint', 'python', args.image, '-c',
+                "import os; [(os.chmod(base,0o777), [os.chmod(os.path.join(base,f),0o666) for f in files if not os.path.islink(os.path.join(base,f))]) for base,dirs,files in os.walk('/cleanup')]",
+            ], check=True)
 
 
 if __name__ == '__main__':

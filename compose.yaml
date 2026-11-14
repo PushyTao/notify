@@ -13,7 +13,10 @@ x-app: &app
     HF_HOME: /data/models/huggingface
     TZ: Asia/Shanghai
   volumes:
-    - notify-data:/data
+    - type: bind
+      source: ${CHANGHONG_DATA_DIR:-/data/changhong}/app
+      target: /data
+      bind: {create_host_path: false}
   extra_hosts:
     - host.docker.internal:host-gateway
   security_opt:
@@ -23,8 +26,29 @@ x-app: &app
   stop_grace_period: 30s
 
 services:
+  init-data:
+    <<: *app
+    user: "0:0"
+    restart: "no"
+    read_only: true
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    volumes:
+      - ${CHANGHONG_DATA_DIR:-/data/changhong}:/host-data
+    entrypoint: [python, -c]
+    command:
+      - |
+        import os
+        from pathlib import Path
+        p = Path('/host-data/app')
+        if p.is_symlink():
+            raise SystemExit('Refusing symlink: ' + str(p))
+        p.mkdir(exist_ok=True)
+        os.chown(p, 10001, 10001)
+        os.chmod(p, 0o700)
   web:
     <<: *app
+    depends_on:
+      init-data: {condition: service_completed_successfully}
     ports:
       - "${BIND_HOST:-0.0.0.0}:${APP_PORT:-8888}:8080"
     healthcheck:
@@ -45,6 +69,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-
-volumes:
-  notify-data:

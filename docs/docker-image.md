@@ -1,6 +1,6 @@
 # 使用现成 Docker 镜像部署长虹
 
-镜像：`pushytao/notify:0.1.0`。当前发布平台为 **Linux amd64（x86_64）**，包含 FFmpeg 和本地 CPU 转写依赖。ARM 服务器不在本次验证范围。
+镜像：`pushytao/notify:latest`。main 更新后由 GitHub Actions 测试并发布，另提供 `sha-完整提交SHA` 和 `vX.Y.Z` 对应的版本标签。当前平台为 **Linux amd64（x86_64）**，包含 FFmpeg 和本地 CPU 转写依赖。
 
 只需 Docker Engine、Docker Compose 2.24+ 和一份 YAML；无需 Git、Python、源码、构建命令或额外 `.env`。转写模型会在首次使用时下载并缓存，AI、邮箱和抖音账号凭据仍由你在后台提供。
 
@@ -11,15 +11,16 @@
 | [compose.full.yaml](../deploy/compose.full.yaml) | 推荐：长虹 + DTK 采集 API/Worker + PostgreSQL + Redis，自动迁移数据库 |
 | [compose.image.yaml](../deploy/compose.image.yaml) | 仅长虹 Web/Worker；用于已有采集服务或第三方 API |
 
-两份文件任选其一，**不要同时在同一 Compose 项目中启动**。它们默认使用 `douyin-notify` 项目名，与旧版长虹的应用数据卷兼容；已有部署先备份，再切换。旧版分开部署的 DTK 数据卷不属于完整模板，不能直接当作自动迁移；已有 DTK 应优先使用简版并配置可达的采集地址。
+两份文件任选其一，**不要同时在同一 Compose 项目中启动**。它们默认使用 `douyin-notify` 项目名，但现在改为绑定 `/data/changhong` 下的主机目录，**不会自动读取旧命名卷**。已有部署必须先按 [存储与迁移说明](docker-storage.md) 备份、停机、复制数据，再切换 YAML。旧版分开部署的 DTK 不属于该迁移范例，应继续使用原采集服务，或单独核实其卷名及数据库版本后迁移。
 
 ## 1. 下载 YAML
 
 在 Linux 服务器新建独立目录：
 
 ```bash
-mkdir -p ~/changhong
-cd ~/changhong
+sudo -i
+mkdir -p /data/changhong
+cd /data/changhong
 curl -fL https://raw.githubusercontent.com/PushyTao/notify/main/deploy/compose.full.yaml -o compose.yaml
 chmod 600 compose.yaml
 ```
@@ -60,7 +61,7 @@ docker compose up -d --wait
 docker compose ps -a
 ```
 
-首次拉取包含转写、数据库等依赖，镜像体积较大。完整版本的 `migrate` 容器退出码为 0 是正常现象，表示数据库迁移成功；其他长期服务应为 running/healthy。
+首次拉取包含转写、数据库等依赖，镜像体积较大。`init-data` 自动创建绑定目录并设置 UID/GID，完成后退出码为 0。完整版本的 `migrate` 退出码为 0 也正常，表示数据库迁移成功；其他长期服务应为 running/healthy。
 
 - 前台：`http://服务器IP:8888/`
 - 后台：`http://服务器IP:8888/admin`
@@ -108,16 +109,16 @@ docker compose stop
 docker compose up -d --wait
 ```
 
-升级前备份，将 YAML 中的 `pushytao/notify:0.1.0` 改成新版本，再运行：
+默认使用 latest。等待 GitHub Actions 发布成功，升级前备份，然后在已运行的部署中只更新长虹：
 
 ```bash
-docker compose pull
-docker compose up -d --wait
+docker compose pull init-data web worker
+docker compose up -d --no-deps --wait web worker
 ```
 
-提供 `latest` 供尝鲜，生产建议固定版本。保留自己已填写的 YAML，不要用下载的空模板覆盖。不要执行 `docker compose down -v`，它会删除数据卷。
+`pull` 后必须 `up` 才会启用新代码。此更新命令不顺带更新 DTK、PostgreSQL 和 Redis。首次启动或整套停止后恢复，应使用不带 `--no-deps` 的 `docker compose up -d --wait`。需要固定镜像时，在同目录 `.env` 设置 `NOTIFY_IMAGE=pushytao/notify:sha-完整提交SHA` 或版本标签。保留已填写的 YAML，不要用空模板覆盖。
 
-应用数据卷默认是 `douyin-notify_notify-data`；完整模板另有 `dtk-postgres`、`dtk-redis`、`dtk-backups`、`dtk-media` 数据卷（均带项目名前缀）。数据卷独立于镜像，正常重建容器不会丢数据。
+主机数据位于 `/data/changhong/app`、`/data/changhong/dtk/{postgres,redis,backups,media}`；容器重建后继续使用这些目录。可在 `.env` 中用 `CHANGHONG_DATA_DIR` 修改根目录。目录布局、权限和旧卷迁移见 [存储说明](docker-storage.md)。更新只替换镜像中的代码，不要映射 `/app` 程序目录，也不要删除主机数据目录。
 
 ## 备份
 
@@ -138,16 +139,16 @@ chmod 600 backup/*
 
 检查命令成功、备份非空，并复制到另一台设备。YAML 含加密密钥和密码，应与数据库一起安全保存；不应上传公开仓库。转写模型缓存可重新下载。
 
-## 维护者：构建和验证镜像
+## 维护者：自动构建和发布
+
+配置仓库 Secret `DOCKERHUB_TOKEN` 后，[工作流](../.github/workflows/docker-publish.yml) 会在 main 推送时测试、构建、验证绑定目录持久化，然后发布 `latest` 和 `sha-完整提交SHA`。版本标签 `vX.Y.Z` 发布 `X.Y.Z`，不覆盖 latest。PR 只验证，不发布。也可从 GitHub Actions 手动触发 main。详见 [README](../README.md#9-github-actions-自动发布配置)。
+
+本地开发时可手动验证（不要覆盖已发布的版本标签）：
 
 ```bash
-docker build --platform linux/amd64 --build-arg APP_VERSION=0.1.0 --build-arg VCS_REF="$(git rev-parse HEAD)" -t pushytao/notify:0.1.0 .
-python scripts/smoke_image.py --image pushytao/notify:0.1.0
-python scripts/smoke_image.py --full --image pushytao/notify:0.1.0
-docker login
-docker push pushytao/notify:0.1.0
-docker tag pushytao/notify:0.1.0 pushytao/notify:latest
-docker push pushytao/notify:latest
+docker build --platform linux/amd64 --build-arg APP_VERSION=dev --build-arg VCS_REF="$(git rev-parse HEAD)" -t notify:test .
+python scripts/smoke_image.py --image notify:test
+python scripts/smoke_image.py --full --image notify:test
 ```
 
-启动验证使用随机项目名、独立数据卷和本机随机端口，检查登录、Worker 共享心跳、重建后的数据持久化；完整版还检查迁移和内部采集连接。结束仅清理本次测试项目，不操作现有部署。镜像中不包含部署 YAML、运行数据库、Cookie、API Key 或本地 `.env`。
+启动验证使用随机项目名、临时绑定目录和本机随机端口，检查目录初始化、登录、Worker 共享心跳、重建后的数据持久化；完整版还检查迁移和内部采集连接。结束仅清理本次测试项目，不操作现有部署。镜像中不包含部署 YAML、运行数据库、Cookie、API Key 或本地 `.env`。

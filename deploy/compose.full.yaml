@@ -29,10 +29,14 @@ x-logging: &logging
   options: {max-size: "10m", max-file: "3"}
 
 x-app: &app
-  image: ${NOTIFY_IMAGE:-pushytao/notify:0.1.0}
+  image: ${NOTIFY_IMAGE:-pushytao/notify:latest}
   restart: unless-stopped
   environment: *environment
-  volumes: [notify-data:/data]
+  volumes:
+    - type: bind
+      source: ${CHANGHONG_DATA_DIR:-/data/changhong}/app
+      target: /data
+      bind: {create_host_path: false}
   security_opt: [no-new-privileges:true]
   cap_drop: [ALL]
   stop_grace_period: 30s
@@ -62,12 +66,41 @@ x-dtk: &dtk
   memswap_limit: 512m
   cpus: 2.0
   pids_limit: 256
-  volumes: [dtk-backups:/var/lib/dtk/backups]
+  volumes:
+    - type: bind
+      source: ${CHANGHONG_DATA_DIR:-/data/changhong}/dtk/backups
+      target: /var/lib/dtk/backups
+      bind: {create_host_path: false}
   logging: *logging
 
 services:
+  init-data:
+    image: ${NOTIFY_IMAGE:-pushytao/notify:latest}
+    user: "0:0"
+    restart: "no"
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    volumes:
+      - ${CHANGHONG_DATA_DIR:-/data/changhong}:/host-data
+    entrypoint: [python, -c]
+    command:
+      - |
+        import os
+        from pathlib import Path
+        root = Path('/host-data')
+        for name, uid, gid in [('app',10001,10001), ('dtk',0,0), ('dtk/postgres',1000,1000), ('dtk/redis',999,1000), ('dtk/backups',10001,10001), ('dtk/media',10001,10001)]:
+            p = root / name
+            if p.is_symlink():
+                raise SystemExit('Refusing symlink: ' + str(p))
+            p.mkdir(exist_ok=True)
+            os.chown(p, uid, gid)
+            os.chmod(p, 0o700)
   web:
     <<: *app
+    depends_on:
+      init-data: {condition: service_completed_successfully}
     ports: ["0.0.0.0:8888:8080"] # 修改中间的端口即可
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=5)"]
@@ -96,7 +129,13 @@ services:
       POSTGRES_PASSWORD: *postgres-password
       POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     command: [postgres, -c, max_connections=100]
-    volumes: [dtk-postgres:/home/postgres/pgdata/data]
+    volumes:
+      - type: bind
+        source: ${CHANGHONG_DATA_DIR:-/data/changhong}/dtk/postgres
+        target: /home/postgres/pgdata/data
+        bind: {create_host_path: false}
+    depends_on:
+      init-data: {condition: service_completed_successfully}
     networks: [data]
     mem_limit: 2g
     pids_limit: 256
@@ -121,7 +160,13 @@ services:
       - |
         test -n "$$REDIS_PASSWORD" || { echo 'REDIS_PASSWORD must be set' >&2; exit 1; }
         exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --save 60 1 --maxmemory 320mb --maxmemory-policy volatile-lru
-    volumes: [dtk-redis:/data]
+    volumes:
+      - type: bind
+        source: ${CHANGHONG_DATA_DIR:-/data/changhong}/dtk/redis
+        target: /data
+        bind: {create_host_path: false}
+    depends_on:
+      init-data: {condition: service_completed_successfully}
     networks: [data]
     mem_limit: 512m
     pids_limit: 128
@@ -149,8 +194,15 @@ services:
     ports: ["127.0.0.1:8000:8000"] # 采集后台仅监听本机，通过 SSH 隧道初始化
     networks: [default, data]
     volumes:
-      - dtk-backups:/var/lib/dtk/backups
-      - dtk-media:/var/lib/dtk/media:ro
+      - type: bind
+        source: ${CHANGHONG_DATA_DIR:-/data/changhong}/dtk/backups
+        target: /var/lib/dtk/backups
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${CHANGHONG_DATA_DIR:-/data/changhong}/dtk/media
+        target: /var/lib/dtk/media
+        read_only: true
+        bind: {create_host_path: false}
     restart: unless-stopped
     stop_grace_period: 30s
     depends_on:
@@ -184,10 +236,3 @@ services:
 networks:
   data:
     internal: true
-
-volumes:
-  notify-data:
-  dtk-postgres:
-  dtk-redis:
-  dtk-backups:
-  dtk-media:
