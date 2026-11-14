@@ -1,6 +1,9 @@
 {% macro market_card(name, key, total=false) %}
 <article class="market-card{% if total %} market-total{% endif %}" {% if total %}data-market-total{% else %}data-market-item{% endif %} data-market-name="{{ name }}" aria-label="{{ name }}行情">
-  <h3>{{ name }}</h3>
+  <div class="market-card-heading">
+    {% if not total %}<button type="button" class="market-drag" data-market-drag aria-label="调整{{ name }}顺序" aria-describedby="market-sort-hint" title="拖动调整顺序，也可使用左右方向键" hidden><span aria-hidden="true">⠿</span></button>{% endif %}
+    <h3>{{ name }}</h3>
+  </div>
   {% if not total %}
   <p class="market-quote"><strong data-market-field="price">—</strong><span data-market-field="change">—</span></p>
   <div class="market-chart" data-market-chart><p class="market-chart-empty">分时数据待更新</p></div>
@@ -37,7 +40,9 @@
     {{ market_card(name, loop.index) }}
     {% endfor %}
     </div>
-    <div class="market-strip-footer"><p id="market-gesture-hint">滚轮 / 左右滑动浏览 · 金额：亿元</p><p class="market-cache" data-market-cache>本站缓存 · 每 60 秒检查更新</p></div>
+    <div class="market-strip-footer"><p id="market-gesture-hint">拖动 ⠿ 排序 · 滚轮 / 左右滑动浏览 · 亿元</p><p class="market-cache" data-market-cache>本站缓存 · 每 60 秒检查更新</p></div>
   </div>
+  <p class="sr-only" id="market-sort-hint">拖动手柄调整优先级，靠近左右边缘自动滚动；也可用左右方向键调整顺序，Home 移至首位，End 移至末位。顺序保存在此浏览器。</p>
+  <p class="sr-only" data-market-sort-status role="status" aria-live="polite"></p>
   <noscript><p class="market-footnote">启用 JavaScript 后可查看行情；视频记录仍可正常阅读。</p></noscript>
 </section>

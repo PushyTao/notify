@@ -99,6 +99,8 @@ def test_finance_home_has_fixed_market_cards_and_independent_total(client):
     assert page.select_one('main').find(recursive=False) == panel
     assert panel.select_one('[data-market-rail]')['tabindex'] == '0'
     assert len(panel.select('dialog')) == 11
+    assert len(panel.select('[data-market-drag]')) == 10
+    assert not total.select('[data-market-drag]')
 
 
 def test_static_assets_use_content_versions_to_avoid_mixed_deployments(client):

@@ -253,6 +253,11 @@ html { scroll-padding-block-start: var(--market-sticky-height, 1rem); }
 .market-status[data-state="error"] { color: var(--danger); }
 .market-card { position: relative; padding: .5rem .65rem; line-height: 1.35; background: var(--surface); border: 1px solid var(--line); border-radius: .6rem; overflow-wrap: anywhere; }
 .market-card h3 { font-size: .86rem; }
+.market-card-heading { display: flex; align-items: center; gap: .25rem; padding-right: 2.5rem; }
+.market-total .market-card-heading { padding-right: 0; }
+.market-drag { display: inline-grid; place-items: center; width: 1.5rem; min-height: 1.5rem; padding: 0; margin: -.15rem 0 -.15rem -.2rem; border: 0; border-radius: .25rem; background: transparent; color: var(--muted); cursor: grab; touch-action: none; user-select: none; font-size: 1.15rem; }
+.market-drag:hover, .market-drag:focus-visible { color: var(--accent); background: var(--accent-soft); }
+.market-card[data-dragging="true"] { opacity: .6; outline: 2px dashed var(--accent); outline-offset: -2px; }
 .market-total { display: flex; align-items: center; flex-wrap: wrap; column-gap: .85rem; row-gap: .15rem; padding: .4rem .7rem; margin-bottom: .45rem; border-left: 3px solid var(--accent); background: var(--accent-soft); }
 .market-total h3 { font-size: .8rem; }
 .market-total .market-amount, .market-total .market-comparison { margin: 0; }
@@ -271,7 +276,9 @@ html { scroll-padding-block-start: var(--market-sticky-height, 1rem); }
 .market-detail-button { position: absolute; top: .5rem; right: .65rem; border: 0; background: transparent; padding: .15rem .25rem; font-size: .7rem; }
 .market-meta + .market-meta { margin-top: .15rem; }
 .market-card-status { color: var(--muted); font-size: .75rem; margin-top: .35rem; }
-.market-cards { display: flex; gap: .6rem; overflow-x: auto; padding: .15rem .15rem .35rem; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.market-cards { display: flex; gap: .6rem; overflow-x: auto; overscroll-behavior-x: contain; overflow-anchor: none; padding: .15rem .15rem .35rem; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.market-cards[data-sorting="true"] { scroll-snap-type: none; user-select: none; }
+.market-cards[data-sorting="true"], .market-cards[data-sorting="true"] .market-drag { cursor: grabbing; }
 .market-cards > .market-card { flex: 0 0 14.25rem; min-width: 0; }
 .market-chart { margin-block: .15rem; }
 .market-chart svg { display: block; width: 100%; height: 2.75rem; overflow: visible; }
@@ -285,7 +292,7 @@ html { scroll-padding-block-start: var(--market-sticky-height, 1rem); }
 .market-chart-empty { display: grid; place-items: center; min-height: 2.75rem; color: var(--muted); font-size: .75rem; background: var(--subtle); border-radius: .4rem; }
 .market-footnote { margin-top: .8rem; line-height: 1.7; }
 .market-strip-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .1rem 1rem; padding-top: .1rem; font-size: .65rem; color: var(--muted); }
-.market-dialog { width: min(30rem, calc(100% - 2rem)); max-height: 80dvh; padding: 1.25rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow-y: auto; }
+.market-dialog { width: min(30rem, calc(100% - 2rem)); max-height: 80dvh; padding: 1.25rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow-y: auto; overscroll-behavior: contain; }
 .market-dialog::backdrop { background: #0007; }
 .market-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .market-dialog-heading h2 { font-size: 1rem; }
