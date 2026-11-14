@@ -19,20 +19,200 @@
 
 ## 拉取镜像部署（推荐）
 
-镜像：`pushytao/notify:0.1.0`，Linux amd64。无需下载源码或在服务器构建。
+镜像：[pushytao/notify:0.1.0](https://hub.docker.com/r/pushytao/notify/tags)，支持 **Linux amd64（x86_64）**。无需下载源码、安装 Python 或在服务器构建，只需一份 YAML。以下步骤默认使用完整采集版。
 
-下载 [完整部署 YAML](deploy/compose.full.yaml) 为 `compose.yaml`，填写顶部五项密钥/密码，即可启动长虹和自部署采集服务；如果已有采集服务，使用 [简版 YAML](deploy/compose.image.yaml)，只需填写两项。
+### 1. 准备 Docker 和端口
+
+服务器需安装 Docker Engine 和 Docker Compose **2.24 或更高版本**。尚未安装时，可按 [Docker 官方 Ubuntu 安装文档](https://docs.docker.com/engine/install/ubuntu/) 操作；安装后检查：
+
+```bash
+docker version
+docker compose version
+```
+
+以下命令除 SSH 隧道外，均在服务器 Bash 终端执行，使用有 Docker 权限的用户。完整版本包含长虹 Web/Worker、DTK 采集 API/Worker、数据库迁移、PostgreSQL 和 Redis。首次拉取镜像需要磁盘空间，本地语音转写还需预留数 GB 可用内存。
+
+| 端口 | 用途 | 是否开放公网 |
+| --- | --- | --- |
+| **8888** | 长虹前台与后台 `/admin` | 需要通过服务器 IP 访问时放行，调试时可限制为自己的 IP |
+| 8000 | DTK 管理后台 | 不开放，默认仅监听服务器 `127.0.0.1` |
+| 5432、6379 | PostgreSQL、Redis | 不开放，仅容器内部使用 |
+| SSH 端口，通常为 22 | 服务器管理和 SSH 隧道 | 保留自己的管理访问权限 |
+
+服务器需能访问 Docker Hub、抖音视频资源、所配置的 AI API 和 SMTP 服务。首次本地转写还需访问 Hugging Face 下载模型，行情更新需访问腾讯财经和同花顺。
+
+### 2. 下载部署 YAML
+
+在服务器上创建一个新的部署目录：
+
+```bash
+mkdir -p ~/changhong
+cd ~/changhong
+curl -fL https://raw.githubusercontent.com/PushyTao/notify/main/deploy/compose.full.yaml -o compose.yaml
+chmod 600 compose.yaml
+```
+
+两种模板任选其一：
+
+| 模板 | 适用情况 |
+| --- | --- |
+| [完整采集版](deploy/compose.full.yaml) | 推荐，包含长虹和 DTK，无需另外克隆采集服务仓库 |
+| [简版](deploy/compose.image.yaml) | 已有采集服务或使用第三方 API，仅启动长虹 Web/Worker |
+
+使用简版时，将下载地址中的 `compose.full.yaml` 换成 `compose.image.yaml`。两份模板不要在同一个 Compose 项目中同时启动。已有部署不要直接用空模板覆盖自己的配置；旧版独立 DTK 的数据卷不会自动迁入完整模板，已有 DTK 建议使用简版并配置可达的服务地址。
+
+### 3. 填写密码、密钥和网站端口
+
+用编辑器打开下载的文件，例如：
+
+```bash
+nano compose.yaml
+```
+
+填写文件顶部的空字符串：
+
+| 配置项 | 要求 |
+| --- | --- |
+| `APP_SECRET_KEY` | 至少 32 字符的随机密钥，用于加密长虹的服务凭据 |
+| `ADMIN_PASSWORD` | 至少 12 字符，首次初始化的长虹后台密码 |
+| `DTK_SECRET_KEY` | 完整版必填，至少 32 字符的随机密钥 |
+| `POSTGRES_PASSWORD` | 完整版必填，随机数据库密码，保留前面的 `&postgres-password` |
+| `REDIS_PASSWORD` | 完整版必填，随机 Redis 密码，保留前面的 `&redis-password` |
+
+每项使用不同的随机值，可分别运行 `openssl rand -hex 32` 生成。简版只需填写前两项。数据库连接地址会自动生成，不需要额外 `.env` 文件。手写密码若含 `$`，在 Compose YAML 中须写成 `$$`，避免被当作环境变量展开。
+
+默认的网站端口配置是：
+
+```yaml
+ports: ["0.0.0.0:8888:8080"]
+```
+
+其中 **8888 是服务器访问端口，8080 是容器内部端口**。需要更换网站端口时，只改中间的 `8888`。仅通过本机代理或 SSH 隧道访问时，可改成 `"127.0.0.1:8888:8080"`。
+
+保存好填完的 YAML。升级时保留 `APP_SECRET_KEY` 和 `DTK_SECRET_KEY`，更换密钥会影响已有凭据解密。数据库初始化后，不要仅修改 YAML 中的数据库密码；旧数据库不会因此自动改密。管理员初始化后通过后台修改密码。
+
+### 4. 拉取镜像并启动
+
+在保存了 `compose.yaml` 的目录执行：
+
+```bash
+docker compose config --quiet
+docker compose pull
+docker compose up -d --wait
+docker compose ps -a
+```
+
+首次启动会自动创建持久化卷和数据库。完整版本中，`migrate` 容器退出码为 **0** 是正常现象，表示数据库迁移成功；其他长期服务应为 running/healthy。
+
+- 前台：`http://服务器IP:8888/`
+- 后台：`http://服务器IP:8888/admin`
+- 后台密码：刚填写的 `ADMIN_PASSWORD`
+
+服务器本机可检查：
+
+```bash
+curl -fsS http://127.0.0.1:8888/healthz
+```
+
+如果本机能访问、外部打不开，检查云安全组是否放行 `8888`。HTTP 下保持 `COOKIE_SECURE: "false"`；配置 HTTPS 时需同步设置可信反向代理和协议转发，再开启 Secure Cookie。
+
+### 5. 初始化 DTK 采集服务
+
+完整采集版在服务器执行：
+
+```bash
+docker compose logs --tail=100 collector
+```
+
+从日志中找到 `/setup?token=……` 初始化链接。然后在**自己的电脑**另开一个终端，替换 SSH 用户名和服务器地址：
+
+```bash
+ssh -N -L 18000:127.0.0.1:8000 -L 18080:127.0.0.1:8888 user@server
+```
+
+保持该终端打开，在本机浏览器访问 `http://127.0.0.1:18000/setup?token=日志中的token`，创建 DTK 管理员。DTK 与长虹的管理员是两套账户。`18000`、`18080` 是本机隧道端口，无需在服务器安全组放行。
+
+1. 在 DTK 的访问管理中创建 API Key，角色选 Operator 或更高，权限包含 `douyin:read`、`identity:manage`。
+2. 打开长虹后台，也可经隧道访问 `http://127.0.0.1:18080/admin`。
+3. 在采集设置中填写服务地址 **`http://collector:8000`** 和刚创建的 API Key，先保存。
+4. 从同一已登录的抖音浏览器会话中复制 Cookie、User-Agent，在长虹后台导入，确认返回身份 UUID。
+
+Cookie 失效后需重新导入。不要把 Cookie、API Key 或已填写密码的 YAML 提交到公开仓库。
+
+简版不包含 DTK，跳过上述初始化，填写 Web/Worker 容器能够访问到的现有采集地址即可。容器里的 `localhost` 不是服务器宿主机。第三方 API 须符合 [服务接入文档](docs/providers.md) 中的接口契约。
+
+### 6. 配置后台并验证一次完整通知
+
+按以下顺序配置：
+
+1. **语音转写**：默认本地 `small` 中文模型，首次运行会下载模型并持久化缓存；也可配置兼容的转写 API。
+2. **模型与提示词**：填写模型的 API 基础 URL、模型 ID、API Key，测试连接并启用一个模型；保留默认提示词或自行覆盖。
+3. **邮件**：配置 SMTP 主机、端口、TLS、发件地址和授权密码，先发送测试邮件。常见搭配为 `587 + starttls` 或 `465 + ssl`，以邮箱服务商要求为准。
+4. **订阅者**：先添加自己的邮箱并启用；支持添加多个收件人。
+5. **博主**：填写抖音完整主页地址或 `sec_user_id`，选择自部署采集，检查间隔可先用 600 秒，**首次补抓设为 1**，启用后点击“立即检查”。
+
+首次补抓为 0 时只建立历史基线，等待后续新视频；如果要立即验证，请在首次添加时设为 1。指定博主订阅可先添加并停用博主，配置订阅后再启用。
+
+查看处理日志：
+
+```bash
+docker compose logs -f --tail=100 worker
+```
+
+确认视频完成采集、转写和总结，前台出现记录，邮箱收到通知后，再增加博主和订阅者。按 `Ctrl+C` 只退出日志查看，不会停止服务。容器 healthy 仅表示服务可运行，不代表 Cookie、AI 或 SMTP 凭据有效。
+
+### 7. 停止、恢复和更新
+
+以下命令均在当前部署目录执行：
+
+```bash
+# 查看状态和日志
+docker compose ps -a
+docker compose logs --tail=100 web worker
+
+# 停止服务，保留数据
+docker compose stop
+
+# 恢复服务
+docker compose up -d --wait
+```
+
+升级前先按下一步备份，将 YAML 中的 `pushytao/notify:0.1.0` 改为需要升级的版本，再执行：
 
 ```bash
 docker compose pull
 docker compose up -d --wait
 ```
 
-前台 `http://服务器IP:8888`，后台 `/admin`。抖音 Cookie、模型、SMTP 和订阅者在后台配置。完整步骤、采集初始化、升级与备份见 [镜像部署说明](docs/docker-image.md)。
+生产使用建议固定版本，另提供 `latest` 标签。保留原来的密码、密钥、项目名和数据卷，不要用新下载的空模板覆盖自己的 YAML。**不要执行 `docker compose down -v`，它会删除持久化数据。**
+
+### 8. 备份
+
+使用 SQLite 在线备份接口，不要直接复制正在运行的数据库主文件：
+
+```bash
+umask 077
+BACKUP_DIR="backup/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
+docker compose exec -T web python -c "import sqlite3; a=sqlite3.connect('/data/notify.db'); b=sqlite3.connect('/data/backup.db'); a.backup(b); b.close(); a.close()"
+docker compose cp web:/data/backup.db "$BACKUP_DIR/notify.db"
+cp compose.yaml "$BACKUP_DIR/compose.yaml"
+```
+
+完整采集版继续备份 DTK 数据库：
+
+```bash
+docker compose exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h 127.0.0.1 -U dtk -d dtk' > "$BACKUP_DIR/dtk.sql"
+```
+
+确认命令成功且备份非空，再复制到另一台设备。YAML 含加密密钥和密码，应与数据库一起安全保存。此处备份核心数据库和配置，转写模型缓存可重新下载。
+
+独立版说明及维护者的镜像构建、发布命令见 [镜像部署说明](docs/docker-image.md)。
 
 ## 从源码构建 Docker 镜像
 
-需要 Docker Engine 和 Docker Compose。首次配置：
+本节用于需要自行修改源码的部署；已按上面拉取镜像启动的用户无需执行。在克隆本仓库后的根目录首次配置：
 
 ```bash
 python scripts/setup_env.py
@@ -53,9 +233,9 @@ docker compose ps
 
 Web 和 Worker 共用持久化卷 `douyin-notify_notify-data`。容器使用非 root 用户，转写模型缓存也保存在数据卷中。首次下载转写模型需要可访问 Hugging Face；下载耗时和识别速度取决于网络及 CPU。建议先预留数 GB 内存，处理较多视频时再按监测结果调整。
 
-## 自部署采集和首次配置
+## 源码部署的采集接入和首次配置
 
-**自部署采集服务有独立容器和初始化步骤，不包含在默认的两个应用容器里。** 请按 [服务接入文档](docs/providers.md) 部署固定版本 DTK，并使用配套的 `deploy/notify.collector.yaml` 将两个项目连接到同一内部网络。该文档也定义第三方接口的完整请求与响应格式。
+**仓库根目录的源码构建 Compose 默认只有两个应用容器，不包含 DTK。** 请按 [服务接入文档](docs/providers.md) 部署固定版本 DTK，并使用配套的 `deploy/notify.collector.yaml` 将两个项目连接到同一内部网络。上面的完整镜像部署 YAML 已包含这些服务，无需重复部署。该文档也定义第三方接口的完整请求与响应格式。
 
 后台按以下顺序配置：
 
@@ -81,7 +261,9 @@ Web 和 Worker 共用持久化卷 `douyin-notify_notify-data`。容器使用非 
 - 已有视频记录的博主不能直接删除或更换账号；可停用以保留阅读历史。修改订阅关系后再删除未产生记录的博主。
 - 管理后台显示最近 200 条视频任务和 200 条投递任务；公开记录通过分页查看全部完成记录。
 
-## 运维、备份和升级
+## 源码部署的运维、备份和升级
+
+本节命令针对从源码构建的安装；镜像部署请使用前文的更新和备份步骤。
 
 ```bash
 docker compose logs --tail=100 web worker
