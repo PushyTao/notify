@@ -28,7 +28,7 @@ docker compose pull
 docker compose up -d --wait
 ```
 
-前台 `http://服务器IP:8080`，后台 `/admin`。抖音 Cookie、模型、SMTP 和订阅者在后台配置。完整步骤、采集初始化、升级与备份见 [镜像部署说明](docs/docker-image.md)。
+前台 `http://服务器IP:8888`，后台 `/admin`。抖音 Cookie、模型、SMTP 和订阅者在后台配置。完整步骤、采集初始化、升级与备份见 [镜像部署说明](docs/docker-image.md)。
 
 ## 从源码构建 Docker 镜像
 
@@ -45,8 +45,8 @@ docker compose up -d --build --wait
 docker compose ps
 ```
 
-- 前台：`http://服务器IP:8080/`
-- 后台：`http://服务器IP:8080/admin`
+- 前台：`http://服务器IP:8888/`
+- 后台：`http://服务器IP:8888/admin`
 - 初始密码：查看自己生成的 `.env` 中的 `ADMIN_PASSWORD`。
 - `APP_PORT` 控制宿主端口；`BIND_HOST=127.0.0.1` 可将应用仅绑定本机。
 - 默认仅启动应用 Web/Worker，尚未配置采集、模型、SMTP 时不会产生真实记录或通知。

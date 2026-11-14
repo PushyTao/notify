@@ -13,7 +13,7 @@ def main():
     with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as stream:
         stream.write('APP_SECRET_KEY=' + secrets.token_urlsafe(48) + '\n')
         stream.write('ADMIN_PASSWORD=' + secrets.token_urlsafe(24) + '\n')
-        stream.write('APP_PORT=8080\nBIND_HOST=0.0.0.0\nCOOKIE_SECURE=false\n')
+        stream.write('APP_PORT=8888\nBIND_HOST=0.0.0.0\nCOOKIE_SECURE=false\n')
     print('Created .env. Read ADMIN_PASSWORD there for your initial /admin login. Keep this file private.')
 
 

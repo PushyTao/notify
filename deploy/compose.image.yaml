@@ -28,7 +28,7 @@ x-app: &app
 services:
   web:
     <<: *app
-    ports: ["0.0.0.0:8080:8080"] # 修改中间的 8080 可更换服务器端口
+    ports: ["0.0.0.0:8888:8080"] # 修改中间的 8888 可更换服务器端口
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=5)"]
       interval: 30s

@@ -38,7 +38,7 @@ def main():
     # URL-reserved characters exercise the connection-string encoder, not just hex passwords.
     config = config.replace('&postgres-password ""', '&postgres-password "' + secrets.token_hex(16) + ':@/+#%"')
     config = config.replace('&redis-password ""', '&redis-password "' + secrets.token_hex(16) + ':@/+#%"')
-    config = config.replace('0.0.0.0:8080:8080', f'127.0.0.1:{port}:8080')
+    config = config.replace('0.0.0.0:8888:8080', f'127.0.0.1:{port}:8080')
     config = config.replace('127.0.0.1:8000:8000', f'127.0.0.1:{free_port()}:8000')
     env = dict(os.environ, NOTIFY_IMAGE=args.image, COMPOSE_ANSI='never')
     # Ignore a caller's unrelated Compose project/environment overrides.
