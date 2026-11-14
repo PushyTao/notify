@@ -20,7 +20,7 @@ x-app: &app
     - type: bind
       source: ${CHANGHONG_DATA_DIR:-/data/changhong}/app
       target: /data
-      bind: {create_host_path: false}
+      bind: {create_host_path: true}
   security_opt: [no-new-privileges:true]
   cap_drop: [ALL]
   stop_grace_period: 30s
