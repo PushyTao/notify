@@ -1,0 +1,193 @@
+# 长虹 + DTK v5.1.10：只需要本文件，无需克隆两个仓库或创建 .env。
+# 只需填写下方五个空字符串，各项使用不同的随机值。
+# 建议 openssl rand -hex 32 生成密钥，openssl rand -hex 24 生成密码。
+# 本文件含密码，请 chmod 600 compose.full.yaml，勿提交已填写的文件。
+name: douyin-notify
+
+x-environment: &environment
+  APP_SECRET_KEY: "" # 必填：至少 32 字符；升级时保持不变
+  ADMIN_PASSWORD: "" # 必填：至少 12 字符；只用于首次创建管理员
+  COOKIE_SECURE: "false"
+  DATA_DIR: /data
+  ASR_CACHE_DIR: /data/models
+  HF_HOME: /data/models/huggingface
+  TZ: Asia/Shanghai
+
+x-dtk-environment: &dtk-environment
+  DTK_SECRET_KEY: "" # 必填：至少 32 字符；升级时保持不变
+  POSTGRES_PASSWORD: &postgres-password "" # 必填：随机数据库密码
+  REDIS_PASSWORD: &redis-password "" # 必填：随机 Redis 密码
+  DTK_BIND_HOST: "0.0.0.0"
+  DTK_BIND_PORT: "8000"
+  DTK_CONSOLE_DIR: /app/web/dist
+  DTK_BACKUP_DIR: /var/lib/dtk/backups
+  DTK_MEDIA_DIR: /var/lib/dtk/media
+  TZ: Asia/Shanghai
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
+x-app: &app
+  image: ${NOTIFY_IMAGE:-pushytao/notify:0.1.0}
+  restart: unless-stopped
+  environment: *environment
+  volumes: [notify-data:/data]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  stop_grace_period: 30s
+  logging: *logging
+
+# 固定上游版本。数据库密码只填一次，由入口进行 URL 编码并构造连接地址。
+x-dtk: &dtk
+  image: evil0ctal/douyin_tiktok_download_api:sha-26299ef8649a12be82c3769b05b316fdeec8d40d
+  environment: *dtk-environment
+  entrypoint:
+    - python
+    - -c
+    - |
+      import os, sys
+      from urllib.parse import quote
+      for key in ('POSTGRES_PASSWORD', 'REDIS_PASSWORD'):
+          if not os.environ.get(key):
+              sys.exit(key + ' must be set in compose.full.yaml')
+      os.environ['DTK_DATABASE_URL'] = 'postgresql+asyncpg://dtk:' + quote(os.environ['POSTGRES_PASSWORD'], safe='') + '@postgres:5432/dtk'
+      os.environ['DTK_REDIS_URL'] = 'redis://:' + quote(os.environ['REDIS_PASSWORD'], safe='') + '@redis:6379/0'
+      os.execvp('dtk-entrypoint', ['dtk-entrypoint', *sys.argv[1:]])
+  read_only: true
+  tmpfs: ["/tmp:size=64m,mode=1777"]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  mem_limit: 512m
+  memswap_limit: 512m
+  cpus: 2.0
+  pids_limit: 256
+  volumes: [dtk-backups:/var/lib/dtk/backups]
+  logging: *logging
+
+services:
+  web:
+    <<: *app
+    ports: ["0.0.0.0:8080:8080"] # 修改中间的端口即可
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  worker:
+    <<: *app
+    command: [python, -m, app.worker]
+    depends_on:
+      web: {condition: service_healthy}
+      collector: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -m, app.worker, --healthcheck]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  postgres:
+    image: timescale/timescaledb-ha:pg17
+    environment:
+      POSTGRES_DB: dtk
+      POSTGRES_USER: dtk
+      POSTGRES_PASSWORD: *postgres-password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    command: [postgres, -c, max_connections=100]
+    volumes: [dtk-postgres:/home/postgres/pgdata/data]
+    networks: [data]
+    mem_limit: 2g
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 1m
+    logging: *logging
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U dtk -d dtk"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:8-alpine
+    user: redis
+    environment:
+      REDIS_PASSWORD: *redis-password
+    command:
+      - sh
+      - -ec
+      - |
+        test -n "$$REDIS_PASSWORD" || { echo 'REDIS_PASSWORD must be set' >&2; exit 1; }
+        exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --save 60 1 --maxmemory 320mb --maxmemory-policy volatile-lru
+    volumes: [dtk-redis:/data]
+    networks: [data]
+    mem_limit: 512m
+    pids_limit: 128
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *logging
+    healthcheck:
+      test: [CMD-SHELL, "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  migrate:
+    <<: *dtk
+    command: [migrate]
+    networks: [data]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  collector:
+    <<: *dtk
+    command: [api]
+    ports: ["127.0.0.1:8000:8000"] # 采集后台仅监听本机，通过 SSH 隧道初始化
+    networks: [default, data]
+    volumes:
+      - dtk-backups:/var/lib/dtk/backups
+      - dtk-media:/var/lib/dtk/media:ro
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  collector-worker:
+    <<: *dtk
+    command: [worker]
+    networks: [default, data]
+    restart: unless-stopped
+    stop_grace_period: 45s
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import socket; socket.create_connection(('redis',6379),5).close()"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+networks:
+  data:
+    internal: true
+
+volumes:
+  notify-data:
+  dtk-postgres:
+  dtk-redis:
+  dtk-backups:
+  dtk-media:

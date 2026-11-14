@@ -5,6 +5,11 @@
 __pycache__
 **/__pycache__
 .env
+.env.*
+**/*.env
+.github
+deploy
+scripts
 data
 test-results
 .superpowers

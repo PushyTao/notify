@@ -13,11 +13,24 @@
 - 默认中文提示词、自定义覆盖、恢复默认；长文本分段总结后合并。
 - 多收件人、全部/指定博主订阅、SMTP/TLS 配置和测试邮件；HTML/纯文本双格式。
 - 简洁响应式前台、明暗主题记忆、筛选、分页、全文展开。
-- 首页行情侧栏：沪深 A 股累计成交额、七个指数和两个行业板块，并与上一交易日同期比较，详见 [行情数据与口径](docs/market.md)。
+- 顶部吸顶行情栏：沪深 A 股累计成交额、七个指数和证券/银行/半导体板块，与上一交易日同期比较；支持卡片拖动排序和横向滚动，详见 [行情数据与口径](docs/market.md)。
 - 密码后台 `/admin`，前台没有登录按钮；会话鉴权、CSRF 校验、登录限速、加密保存密钥。
 - SQLite 持久化、去重、分阶段重试、租约与心跳、后台任务状态和手动重试。
 
-## Docker 启动
+## 拉取镜像部署（推荐）
+
+镜像：`pushytao/notify:0.1.0`，Linux amd64。无需下载源码或在服务器构建。
+
+下载 [完整部署 YAML](deploy/compose.full.yaml) 为 `compose.yaml`，填写顶部五项密钥/密码，即可启动长虹和自部署采集服务；如果已有采集服务，使用 [简版 YAML](deploy/compose.image.yaml)，只需填写两项。
+
+```bash
+docker compose pull
+docker compose up -d --wait
+```
+
+前台 `http://服务器IP:8080`，后台 `/admin`。抖音 Cookie、模型、SMTP 和订阅者在后台配置。完整步骤、采集初始化、升级与备份见 [镜像部署说明](docs/docker-image.md)。
+
+## 从源码构建 Docker 镜像
 
 需要 Docker Engine 和 Docker Compose。首次配置：
 
@@ -77,7 +90,7 @@ docker compose exec worker python -m app.worker --healthcheck
 
 在“概览”检查 Worker 心跳。健康检查表示进程及数据库可用，不表示抖音 Cookie、SMTP 或模型凭据有效；这些错误显示在对应任务中。
 
-行情由 Worker 独立更新，经共享 SQLite 卷提供给 Web。无需新增环境变量，Worker 需要能访问腾讯财经和东方财富的公开 HTTPS 行情接口；行情失败不影响视频或邮件。仅运行 Web 时，前台展示已有缓存或等待更新。
+行情由 Worker 独立更新，经共享 SQLite 卷提供给 Web。无需新增环境变量，Worker 需要能访问腾讯财经和同花顺的公开 HTTPS 行情接口；行情失败不影响视频或邮件。仅运行 Web 时，前台展示已有缓存或等待更新。
 
 备份数据库时使用 SQLite 在线备份接口，避免只复制正在使用 WAL 的主文件：
 

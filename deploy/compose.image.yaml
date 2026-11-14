@@ -1,0 +1,51 @@
+# 长虹：只需要本文件，无需源码、Python 或 .env。
+# 填写下面两项，再执行 docker compose -f compose.image.yaml up -d --wait。
+# 本文件含密码，请 chmod 600 compose.image.yaml，勿提交已填写的文件。
+name: douyin-notify
+
+x-environment: &environment
+  APP_SECRET_KEY: "" # 必填：至少 32 字符的随机密钥；升级时保持不变
+  ADMIN_PASSWORD: "" # 必填：至少 12 字符，仅首次创建管理员时生效
+  COOKIE_SECURE: "false" # 通过 HTTPS 访问且代理配置正确后改为 true
+  DATA_DIR: /data
+  ASR_CACHE_DIR: /data/models
+  HF_HOME: /data/models/huggingface
+  TZ: Asia/Shanghai
+
+x-app: &app
+  image: ${NOTIFY_IMAGE:-pushytao/notify:0.1.0}
+  restart: unless-stopped
+  environment: *environment
+  volumes:
+    - notify-data:/data
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  stop_grace_period: 30s
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  web:
+    <<: *app
+    ports: ["0.0.0.0:8080:8080"] # 修改中间的 8080 可更换服务器端口
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  worker:
+    <<: *app
+    command: [python, -m, app.worker]
+    depends_on:
+      web: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -m, app.worker, --healthcheck]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  notify-data:
