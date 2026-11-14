@@ -1,0 +1,43 @@
+{% macro show_record(record, expanded=false) %}
+<article class="record">
+  <dl class="record-fields">
+    <div class="record-field metadata">
+      <dt>更新时间</dt><dd>{{ record.published_at | datetime }}</dd>
+    </div>
+    <div class="record-field metadata">
+      <dt>博主名称</dt><dd>{{ record.author_name }}</dd>
+    </div>
+    <div class="record-field summary">
+      <dt>总结内容</dt><dd class="prose">{{ record.summary }}</dd>
+    </div>
+    <div class="record-field">
+      <dt>内容全文</dt>
+      <dd>
+        <details class="transcript"{% if expanded %} open{% endif %}>
+          <summary>视频转写</summary>
+          <div class="prose">{{ record.transcript }}</div>
+        </details>
+      </dd>
+    </div>
+    <div class="record-field">
+      <dt>原视频标题</dt>
+      <dd>
+        {% if expanded %}{{ record.title }}{% else %}
+        <a class="detail-link" href="/records/{{ record.id | urlencode }}">{{ record.title }}</a>
+        {% endif %}
+      </dd>
+    </div>
+    <div class="record-field">
+      <dt>原视频链接</dt>
+      {% set url = record.url | default('', true) | trim %}
+      <dd>
+        {% if (url | lower).startswith(('https://', 'http://')) %}
+        <a class="source-link" href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ url }}</a>
+        {% else %}
+        暂无可用链接
+        {% endif %}
+      </dd>
+    </div>
+  </dl>
+</article>
+{% endmacro %}

@@ -1,0 +1,15 @@
+# Apply on top of Douyin Notify's compose.yaml.
+services:
+  web:
+    networks:
+      - default
+      - collector_link
+  worker:
+    networks:
+      - default
+      - collector_link
+
+networks:
+  collector_link:
+    external: true
+    name: douyin-notify-collector

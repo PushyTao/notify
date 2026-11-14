@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "_record.html" import show_record %}
+{% block title %}视频记录 · 讯笺{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <a class="back-link" href="/">← 返回更新记录</a>
+  <h1>视频记录</h1>
+  <p class="muted">发布时间以北京时间显示</p>
+</section>
+{{ show_record(record, expanded=true) }}
+{% endblock %}

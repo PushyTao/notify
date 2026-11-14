@@ -1,0 +1,15 @@
+# Apply on top of the upstream v5.1.10 docker/compose.yml.
+services:
+  api:
+    networks:
+      data:
+      edge:
+      compute:
+      notify_link:
+        aliases:
+          - collector
+
+networks:
+  notify_link:
+    external: true
+    name: douyin-notify-collector

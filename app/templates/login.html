@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}管理员登录 · 讯笺{% endblock %}
+{% block content %}
+<section class="login-card panel" aria-labelledby="login-heading">
+  <h1 id="login-heading">管理员登录</h1>
+  <form id="login-form" method="post" action="/api/login">
+    <div class="form-field">
+      <label for="login-password">管理密码</label>
+      <input type="password" name="password" id="login-password" autocomplete="current-password" maxlength="1024" required>
+    </div>
+    <p id="login-feedback" class="feedback" role="alert" hidden></p>
+    <button type="submit" class="button primary" disabled>登录</button>
+  </form>
+  <noscript><p class="muted">请启用 JavaScript 以登录管理后台。</p></noscript>
+</section>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_record.html" import show_record %}
+{% block title %}更新记录 · 讯笺{% endblock %}
+{% block content %}
+<section class="page-intro feed-intro" aria-labelledby="feed-heading">
+  <div>
+    <h1 id="feed-heading">更新记录</h1>
+    <p class="muted">抖音视频的内容总结与语音转写</p>
+  </div>
+  <form class="filter-form" action="/" method="get">
+    <label for="author-filter">按博主筛选</label>
+    <div class="filter-controls">
+      <select name="author_id" id="author-filter">
+        <option value="">全部博主</option>
+        {% for author in authors %}
+        <option value="{{ author.id }}"{% if author.id | string == author_id | string %} selected{% endif %}>{{ author.name }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="button">筛选</button>
+    </div>
+  </form>
+</section>
+<div class="feed-info">
+  <p>共 {{ total }} 条记录</p>
+  <p>北京时间 · 最新在前</p>
+</div>
+<div class="feed">
+  {% for record in records %}
+  {{ show_record(record) }}
+  {% else %}
+  <section class="empty">
+    <h2>暂无更新记录</h2>
+    <p>{% if author_id %}该博主暂无可阅读的记录。{% else %}视频处理完成后会显示在这里。{% endif %}</p>
+    {% if author_id %}<a href="/">查看全部博主</a>{% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% if pages > 1 %}
+<nav class="pagination" aria-label="分页">
+  {% if page > 1 %}
+  <a class="button" href="/?page={{ page - 1 }}{% if author_id %}&amp;author_id={{ author_id | urlencode }}{% endif %}">上一页</a>
+  {% else %}<span class="button disabled" aria-disabled="true">上一页</span>{% endif %}
+  <span aria-current="page">第 {{ page }} / {{ pages }} 页</span>
+  {% if page < pages %}
+  <a class="button" href="/?page={{ page + 1 }}{% if author_id %}&amp;author_id={{ author_id | urlencode }}{% endif %}">下一页</a>
+  {% else %}<span class="button disabled" aria-disabled="true">下一页</span>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}
