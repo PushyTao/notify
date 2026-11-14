@@ -234,12 +234,16 @@ docker compose exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -
 
 工作流文件：[docker-publish.yml](.github/workflows/docker-publish.yml)。一次性在 [仓库 Actions Secrets](https://github.com/PushyTao/notify/settings/secrets/actions) 添加 `DOCKERHUB_TOKEN`，值为 Docker Hub `pushytao` 账号具有 Read & Write 权限的访问令牌；用户名已在工作流中设置，无需把令牌写入 YAML 或发送到聊天。
 
-- 推送 `main`：运行 Python、前端测试，构建 Linux amd64 镜像，验证简版与完整采集版的启动、绑定目录和重建持久化，通过后发布 `latest`、`sha-完整提交SHA`。
+- 推送 `main`：运行 Python、前端测试，构建 Linux amd64 镜像，验证简版与完整采集版的启动、绑定目录和重建持久化，通过后同时发布 **`0.1.N`、`latest`、`sha-完整提交SHA`**，三者指向同一镜像，镜像的版本元数据也使用数字版本。
 - 推送新标签 `vX.Y.Z`：执行相同验证后发布 `X.Y.Z` 和 SHA 标签；不会用旧版本覆盖 `latest`，也不允许复用已发布的版本号。
 - Pull Request：只测试和构建，不使用发布凭据、不推送镜像。
 - 手动触发：Actions → 测试并发布 Docker 镜像 → Run workflow，选择 `main`；也可在配置好 Secret 后重新运行失败的发布任务。
 
-同一分支串行构建；若验证结束时 main 已有更新提交，本次不覆盖 latest。发布的是实际通过启动验证的同一镜像。发布失败时旧镜像仍可使用；服务器不会自动重启，需主动执行前面的更新命令。
+`N` 是 GitHub Actions 的 `run_number`，每次新运行递增；失败或 PR 验证可能让已发布版本跳号，这是正常现象。同一次运行重试仍使用原编号，不覆盖已存在的版本。维护者需要调整主/次版本时，修改工作流的 `VERSION_SERIES`；手动 `vX.Y.Z` 标签也必须选择未使用的版本号。
+
+如果数字版本已经上传，但最后更新 latest 时发生网络错误，不要反复重跑同一次运行：在 Actions 中选择 **Run workflow → main** 创建新运行，使用新的数字版本完成发布。已上传的数字版本会保留，不会被重写。凭据检查或测试阶段失败、尚未发布数字版本时，可以直接重跑原任务。
+
+发布任务串行；若验证结束时 main 已有更新提交，本次不发布旧提交。发布的是实际通过启动验证的同一镜像。发布失败时旧镜像仍可使用；服务器不会自动重启，需主动执行前面的更新命令。
 
 ## 从源码构建 Docker 镜像
 

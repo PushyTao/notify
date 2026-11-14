@@ -1,6 +1,6 @@
 # 使用现成 Docker 镜像部署长虹
 
-镜像：`pushytao/notify:latest`。main 更新后由 GitHub Actions 测试并发布，另提供 `sha-完整提交SHA` 和 `vX.Y.Z` 对应的版本标签。当前平台为 **Linux amd64（x86_64）**，包含 FFmpeg 和本地 CPU 转写依赖。
+镜像：`pushytao/notify:latest`。main 更新后由 GitHub Actions 测试并发布，同步生成数字版本 **`0.1.N`**（N 为构建序号）及 `sha-完整提交SHA`，三个标签指向同一镜像。也支持手动 `vX.Y.Z` 对应的版本标签。当前平台为 **Linux amd64（x86_64）**，包含 FFmpeg 和本地 CPU 转写依赖。
 
 只需 Docker Engine、Docker Compose 2.24+ 和一份 YAML；无需 Git、Python、源码、构建命令或额外 `.env`。转写模型会在首次使用时下载并缓存，AI、邮箱和抖音账号凭据仍由你在后台提供。
 
@@ -141,7 +141,9 @@ chmod 600 backup/*
 
 ## 维护者：自动构建和发布
 
-配置仓库 Secret `DOCKERHUB_TOKEN` 后，[工作流](../.github/workflows/docker-publish.yml) 会在 main 推送时测试、构建、验证绑定目录持久化，然后发布 `latest` 和 `sha-完整提交SHA`。版本标签 `vX.Y.Z` 发布 `X.Y.Z`，不覆盖 latest。PR 只验证，不发布。也可从 GitHub Actions 手动触发 main。详见 [README](../README.md#9-github-actions-自动发布配置)。
+配置仓库 Secret `DOCKERHUB_TOKEN` 后，[工作流](../.github/workflows/docker-publish.yml) 会在 main 推送时测试、构建、验证绑定目录持久化，然后发布 `0.1.N`、`latest` 和 `sha-完整提交SHA`。N 使用 GitHub Actions 的 run_number，失败或 PR 运行可能导致版本跳号，重试不覆盖已存在的版本。版本标签 `vX.Y.Z` 发布 `X.Y.Z`，不覆盖 latest。PR 只验证，不发布。也可从 GitHub Actions 手动触发 main。详见 [README](../README.md#9-github-actions-自动发布配置)。
+
+若数字版本推送成功但 latest 更新失败，请在 Actions 中 **Run workflow → main** 创建新的运行编号完成发布；重跑同一次运行会被旧版本保护拦截。测试或凭据检查阶段失败、尚未发布数字版本时，可以重跑原任务。
 
 本地开发时可手动验证（不要覆盖已发布的版本标签）：
 
