@@ -202,7 +202,7 @@ docker compose ps -a
 
 `pull` 只下载镜像，必须执行 `up` 才会替换运行中的容器。这里的更新命令用于已经正常运行的部署；首次启动或整套服务停止后，使用不带 `--no-deps` 的 `docker compose up -d --wait`。
 
-需要固定版本或回退时，在 `.env` 配置 `NOTIFY_IMAGE=pushytao/notify:sha-完整提交SHA`（也可使用发布的版本号），再执行同样的拉取和重建命令。涉及数据库结构变化的版本不能仅靠旧镜像保证回退，应结合发布说明及升级前备份。
+需要固定版本或回退时，在 `.env` 配置数字版本，例如 `NOTIFY_IMAGE=pushytao/notify:0.1.3`，再执行同样的拉取和重建命令。涉及数据库结构变化的版本不能仅靠旧镜像保证回退，应结合发布说明及升级前备份。
 
 更新无需修改端口、密钥或数据目录。不要用下载的空 YAML 覆盖自己的配置，也不要删除 `/data/changhong`。旧命名卷尚未迁移时，更不能执行 `docker compose down -v`。
 
@@ -234,8 +234,8 @@ docker compose exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -
 
 工作流文件：[docker-publish.yml](.github/workflows/docker-publish.yml)。一次性在 [仓库 Actions Secrets](https://github.com/PushyTao/notify/settings/secrets/actions) 添加 `DOCKERHUB_TOKEN`，值为 Docker Hub `pushytao` 账号具有 Read & Write 权限的访问令牌；用户名已在工作流中设置，无需把令牌写入 YAML 或发送到聊天。
 
-- 推送 `main`：运行 Python、前端测试，构建 Linux amd64 镜像，验证简版与完整采集版的启动、绑定目录和重建持久化，通过后同时发布 **`0.1.N`、`latest`、`sha-完整提交SHA`**，三者指向同一镜像，镜像的版本元数据也使用数字版本。
-- 推送新标签 `vX.Y.Z`：执行相同验证后发布 `X.Y.Z` 和 SHA 标签；不会用旧版本覆盖 `latest`，也不允许复用已发布的版本号。
+- 推送 `main`：运行 Python、前端测试，构建 Linux amd64 镜像，验证简版与完整采集版的启动、绑定目录和重建持久化，通过后只发布 **`0.1.N` 和 `latest`**，两者指向同一镜像，镜像的版本元数据也使用数字版本。
+- 推送新标签 `vX.Y.Z`：执行相同验证后只发布 `X.Y.Z`；不会用旧版本覆盖 `latest`，也不允许复用已发布的版本号。
 - Pull Request：只测试和构建，不使用发布凭据、不推送镜像。
 - 手动触发：Actions → 测试并发布 Docker 镜像 → Run workflow，选择 `main`；也可在配置好 Secret 后重新运行失败的发布任务。
 

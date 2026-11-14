@@ -1,6 +1,6 @@
 # 使用现成 Docker 镜像部署长虹
 
-镜像：`pushytao/notify:latest`。main 更新后由 GitHub Actions 测试并发布，同步生成数字版本 **`0.1.N`**（N 为构建序号）及 `sha-完整提交SHA`，三个标签指向同一镜像。也支持手动 `vX.Y.Z` 对应的版本标签。当前平台为 **Linux amd64（x86_64）**，包含 FFmpeg 和本地 CPU 转写依赖。
+镜像：`pushytao/notify:latest`。main 更新后由 GitHub Actions 测试并发布，只生成数字版本 **`0.1.N`**（N 为构建序号）和 `latest`，两个标签指向同一镜像。也支持手动 `vX.Y.Z` 对应的数字版本标签。当前平台为 **Linux amd64（x86_64）**，包含 FFmpeg 和本地 CPU 转写依赖。
 
 只需 Docker Engine、Docker Compose 2.24+ 和一份 YAML；无需 Git、Python、源码、构建命令或额外 `.env`。转写模型会在首次使用时下载并缓存，AI、邮箱和抖音账号凭据仍由你在后台提供。
 
@@ -116,7 +116,7 @@ docker compose pull init-data web worker
 docker compose up -d --no-deps --wait web worker
 ```
 
-`pull` 后必须 `up` 才会启用新代码。此更新命令不顺带更新 DTK、PostgreSQL 和 Redis。首次启动或整套停止后恢复，应使用不带 `--no-deps` 的 `docker compose up -d --wait`。需要固定镜像时，在同目录 `.env` 设置 `NOTIFY_IMAGE=pushytao/notify:sha-完整提交SHA` 或版本标签。保留已填写的 YAML，不要用空模板覆盖。
+`pull` 后必须 `up` 才会启用新代码。此更新命令不顺带更新 DTK、PostgreSQL 和 Redis。首次启动或整套停止后恢复，应使用不带 `--no-deps` 的 `docker compose up -d --wait`。需要固定镜像时，在同目录 `.env` 设置数字版本，例如 `NOTIFY_IMAGE=pushytao/notify:0.1.3`。保留已填写的 YAML，不要用空模板覆盖。
 
 主机数据位于 `/data/changhong/app`、`/data/changhong/dtk/{postgres,redis,backups,media}`；容器重建后继续使用这些目录。可在 `.env` 中用 `CHANGHONG_DATA_DIR` 修改根目录。目录布局、权限和旧卷迁移见 [存储说明](docker-storage.md)。更新只替换镜像中的代码，不要映射 `/app` 程序目录，也不要删除主机数据目录。
 
@@ -141,7 +141,7 @@ chmod 600 backup/*
 
 ## 维护者：自动构建和发布
 
-配置仓库 Secret `DOCKERHUB_TOKEN` 后，[工作流](../.github/workflows/docker-publish.yml) 会在 main 推送时测试、构建、验证绑定目录持久化，然后发布 `0.1.N`、`latest` 和 `sha-完整提交SHA`。N 使用 GitHub Actions 的 run_number，失败或 PR 运行可能导致版本跳号，重试不覆盖已存在的版本。版本标签 `vX.Y.Z` 发布 `X.Y.Z`，不覆盖 latest。PR 只验证，不发布。也可从 GitHub Actions 手动触发 main。详见 [README](../README.md#9-github-actions-自动发布配置)。
+配置仓库 Secret `DOCKERHUB_TOKEN` 后，[工作流](../.github/workflows/docker-publish.yml) 会在 main 推送时测试、构建、验证绑定目录持久化，然后只发布 `0.1.N` 和 `latest`。N 使用 GitHub Actions 的 run_number，失败或 PR 运行可能导致版本跳号，重试不覆盖已存在的版本。版本标签 `vX.Y.Z` 只发布 `X.Y.Z`，不覆盖 latest。PR 只验证，不发布。也可从 GitHub Actions 手动触发 main。详见 [README](../README.md#9-github-actions-自动发布配置)。
 
 若数字版本推送成功但 latest 更新失败，请在 Actions 中 **Run workflow → main** 创建新的运行编号完成发布；重跑同一次运行会被旧版本保护拦截。测试或凭据检查阶段失败、尚未发布数字版本时，可以重跑原任务。
 

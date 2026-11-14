@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 45
     env:
       IMAGE: pushytao/notify
-      TEST_IMAGE: pushytao/notify:ci-${{ github.sha }}
+      TEST_IMAGE: notify-build:${{ github.run_id }}
       VERSION_SERIES: '0.1'
     steps:
       - uses: actions/checkout@v6
@@ -128,11 +128,9 @@ jobs:
               exit 1
             fi
           fi
-          docker tag "$TEST_IMAGE" "$IMAGE:sha-$GITHUB_SHA"
-          docker push "$IMAGE:sha-$GITHUB_SHA"
           docker tag "$TEST_IMAGE" "$IMAGE:$CHANNEL"
           docker push "$IMAGE:$CHANNEL"
-          echo "已发布：\`$IMAGE:$CHANNEL\` 和 \`$IMAGE:sha-$GITHUB_SHA\`。" >> "$GITHUB_STEP_SUMMARY"
+          echo "已发布：\`$IMAGE:$CHANNEL\`。" >> "$GITHUB_STEP_SUMMARY"
           if [[ "$UPDATE_LATEST" == true ]]; then
             docker tag "$TEST_IMAGE" "$IMAGE:latest"
             docker push "$IMAGE:latest"
