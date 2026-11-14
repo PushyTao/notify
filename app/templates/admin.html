@@ -3,7 +3,7 @@
 {% block body_class %}admin-page{% endblock %}
 {% block head %}
 <meta name="csrf-token" content="{{ csrf }}">
-<script src="/static/admin.js" defer></script>
+<script src="/static/admin.js?v={{ asset_versions.get('admin.js', 'dev') }}" defer></script>
 {% endblock %}
 {% block header_actions %}
 <button type="button" class="button compact" id="logout" disabled>退出</button>

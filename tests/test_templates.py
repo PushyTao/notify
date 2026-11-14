@@ -12,6 +12,7 @@ def templates():
         autoescape=select_autoescape(["html"]),
     )
     env.filters["datetime"] = lambda value: "2026-11-14 10:30"
+    env.globals['asset_versions'] = {}
     return env
 
 

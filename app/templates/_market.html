@@ -1,32 +1,43 @@
-{% macro market_card(name, total=false) %}
+{% macro market_card(name, key, total=false) %}
 <article class="market-card{% if total %} market-total{% endif %}" {% if total %}data-market-total{% else %}data-market-item{% endif %} data-market-name="{{ name }}" aria-label="{{ name }}行情">
   <h3>{{ name }}</h3>
   {% if not total %}
   <p class="market-quote"><strong data-market-field="price">—</strong><span data-market-field="change">—</span></p>
   <div class="market-chart" data-market-chart><p class="market-chart-empty">分时数据待更新</p></div>
   {% endif %}
-  <p class="market-amount"><span>{% if total %}累计成交额{% else %}成交额{% endif %}</span><strong data-market-field="amount">—</strong><span>亿元</span></p>
+  <p class="market-amount"><span>{% if total %}累计{% else %}成交额{% endif %}</span><strong data-market-field="amount">—</strong><span>亿元</span></p>
   <p class="market-comparison" data-market-field="comparison">暂无可比数据</p>
+  <p class="market-brief" data-market-field="brief">等待行情更新</p>
+  <button type="button" class="market-detail-button" data-market-open aria-haspopup="dialog" aria-label="查看{{ name }}行情详情" hidden>详情 <span aria-hidden="true">↗</span></button>
+  <dialog class="market-dialog" aria-labelledby="market-dialog-{{ key }}">
+  <div class="market-dialog-heading"><h2 id="market-dialog-{{ key }}">{{ name }} · 行情说明</h2><button type="button" class="button compact" data-market-close autofocus>关闭</button></div>
   <p class="market-meta" data-market-field="date">行情日期 — · 截至 —（北京时间）</p>
   <p class="market-meta" data-market-field="baseline">同期基准 —</p>
   <p class="market-meta" data-market-field="source">数据源 —</p>
   <p class="market-meta" data-market-field="scope">{% if total %}沪深 A 股独立统计，不含北交所与 B 股；不对各项行情求和。{% else %}统计口径待更新{% endif %}</p>
   <p class="market-card-status" data-market-field="status">等待行情更新</p>
+  <p class="market-footnote">盘中与上一交易日同一时刻比较，午休沿用 11:30，收盘比较全天。休市展示最近交易日；缺少可靠数据时不作估算。{% if not total %}分时曲线以当天首个点位为基准，午休不计交易时长。{% endif %}</p>
+  </dialog>
 </article>
 {% endmacro %}
-<aside class="market-panel" data-market-panel aria-labelledby="market-heading">
-  <div class="market-heading"><h2 id="market-heading">市场速览</h2><span>金额单位：亿元</span></div>
-  <p class="market-status" data-market-status role="status" aria-live="polite">等待行情更新</p>
-  <p class="market-meta market-cache" data-market-cache>本站缓存 · 每 60 秒检查更新</p>
-  {{ market_card('沪深成交额', total=true) }}
-  <details class="market-details" data-market-details open>
-    <summary>指数与板块 <span>10 项 · 展开 / 收起</span></summary>
-    <div class="market-cards">
+<section class="market-panel" data-market-panel aria-labelledby="market-heading">
+  <div class="market-toolbar">
+    <div class="market-heading"><h2 id="market-heading">市场速览</h2><p class="market-status" data-market-status role="status" aria-live="polite">等待行情更新</p></div>
+    <div class="market-controls">
+      <span class="market-range" data-market-range hidden>10 项</span>
+      <button type="button" class="market-arrow" data-market-prev aria-label="查看前一组行情" aria-controls="market-rail" hidden>←</button>
+      <button type="button" class="market-arrow" data-market-next aria-label="查看后一组行情" aria-controls="market-rail" hidden>→</button>
+      <button type="button" class="market-toggle" data-market-toggle aria-expanded="true" aria-controls="market-content" hidden>收起行情</button>
+    </div>
+  </div>
+  {{ market_card('沪深成交额', 'total', total=true) }}
+  <div id="market-content" data-market-content>
+    <div class="market-cards" id="market-rail" data-market-rail tabindex="0" role="region" aria-label="指数与板块行情，可左右滑动或使用方向键" aria-describedby="market-gesture-hint">
     {% for name in ['上证指数', '深成指', '创业板指', '科创综指', '科创50', '沪深300', '中证1000', '证券板块', '银行板块', '半导体板块'] %}
-    {{ market_card(name) }}
+    {{ market_card(name, loop.index) }}
     {% endfor %}
     </div>
-  </details>
-  <p class="market-footnote">盘中比较上一交易日同一时刻，午休沿用 11:30，收盘比较全天。休市展示最近交易日；缺少可靠数据时不作估算。</p>
+    <div class="market-strip-footer"><p id="market-gesture-hint">滚轮 / 左右滑动浏览 · 金额：亿元</p><p class="market-cache" data-market-cache>本站缓存 · 每 60 秒检查更新</p></div>
+  </div>
   <noscript><p class="market-footnote">启用 JavaScript 后可查看行情；视频记录仍可正常阅读。</p></noscript>
-</aside>
+</section>

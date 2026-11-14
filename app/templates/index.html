@@ -2,8 +2,9 @@
 {% from "_record.html" import show_record %}
 {% block title %}财经关注 · 长虹{% endblock %}
 {% block body_class %}finance-page{% endblock %}
-{% block head %}<script src="/static/market.js" defer></script>{% endblock %}
+{% block head %}<script src="/static/market.js?v={{ asset_versions.get('market.js', 'dev') }}" defer></script><script src="/static/market-strip.js?v={{ asset_versions.get('market-strip.js', 'dev') }}" defer></script>{% endblock %}
 {% block content %}
+{% include "_market.html" %}
 <section class="page-intro feed-intro" aria-labelledby="feed-heading">
   <div>
     <h1 id="feed-heading">更新记录</h1>
@@ -22,8 +23,6 @@
     </div>
   </form>
 </section>
-<div class="finance-layout">
-{% include "_market.html" %}
 <section class="feed-column" aria-label="视频更新记录">
 <div class="feed-info">
   <p>共 {{ total }} 条记录</p>
@@ -52,5 +51,4 @@
 </nav>
 {% endif %}
 </section>
-</div>
 {% endblock %}

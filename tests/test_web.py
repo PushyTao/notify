@@ -94,7 +94,24 @@ def test_finance_home_has_fixed_market_cards_and_independent_total(client):
     assert '等待行情更新' in panel.get_text()
     assert '暂无可比数据' in panel.get_text()
     assert not page.select('a[href="/admin"]')
-    assert page.select_one('script[src="/static/market.js"][defer]')
+    assert page.select_one('script[src^="/static/market.js?v="][defer]')
+    assert page.select_one('script[src^="/static/market-strip.js?v="][defer]')
+    assert page.select_one('main').find(recursive=False) == panel
+    assert panel.select_one('[data-market-rail]')['tabindex'] == '0'
+    assert len(panel.select('dialog')) == 11
+
+
+def test_static_assets_use_content_versions_to_avoid_mixed_deployments(client):
+    import hashlib
+    from pathlib import Path
+    from urllib.parse import urlsplit, parse_qs
+    from bs4 import BeautifulSoup
+    page = BeautifulSoup(client.get('/').text, 'html.parser')
+    urls = [node.get('src') or node.get('href') for node in page.select('script[src], link[rel=stylesheet]')]
+    for url in urls:
+        parts = urlsplit(url)
+        path = Path(__file__).parents[1] / 'app' / parts.path.lstrip('/')
+        assert parse_qs(parts.query).get('v') == [hashlib.sha256(path.read_bytes()).hexdigest()[:12]]
 
 
 def test_chunked_body_limit_without_content_length(client):

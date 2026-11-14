@@ -5,12 +5,8 @@
   if (!panel) return;
   const status = panel.querySelector("[data-market-status]");
   const cache = panel.querySelector("[data-market-cache]");
-  const details = panel.querySelector("[data-market-details]");
   const cards = [...panel.querySelectorAll("[data-market-item]")];
   const total = panel.querySelector("[data-market-total]");
-  const narrow = window.matchMedia("(max-width: 64rem)");
-  details.open = !narrow.matches;
-  narrow.addEventListener("change", (event) => { details.open = !event.matches; });
 
   const finite = (value) => typeof value === "number" && Number.isFinite(value);
   const text = (value, fallback = "—") => typeof value === "string" && value.trim() ? value : fallback;
@@ -93,8 +89,7 @@
     const padding = Math.max((high - low) * 0.15, Math.abs(first.price) * 0.0005, 0.01);
     const x = (minute) => 8 + minute / 240 * 264;
     const y = (price) => 28 + (high + padding - price) / (high - low + padding * 2) * 64;
-    const svg = svgElement("svg", { viewBox: "0 0 280 118", role: "img", class: tone(item.change_pct), "aria-label": `${card.dataset.marketName} ${text(item.trade_date)}分时价格，首点基准 ${number(first.price)}，${first.time}至${points.at(-1).time}，午休不计交易时长` });
-    svg.append(svgElement("text", { x: 8, y: 12 }, `首点基准 ${number(first.price)} · ${first.time}`));
+    const svg = svgElement("svg", { viewBox: "0 18 280 80", role: "img", class: tone(item.change_pct), "aria-label": `${card.dataset.marketName} ${text(item.trade_date)}分时价格，首点基准 ${number(first.price)}，${first.time}至${points.at(-1).time}，午休不计交易时长` });
     svg.append(svgElement("line", { x1: 8, x2: 272, y1: y(first.price), y2: y(first.price), class: "chart-baseline" }));
     svg.append(svgElement("line", { x1: 140, x2: 140, y1: 24, y2: 95, class: "chart-grid" }));
     // Do not connect across missing minutes: incomplete data remains visibly incomplete.
@@ -111,9 +106,6 @@
         svg.append(svgElement("circle", { cx: x(point.minute), cy: y(point.price), r: 2, class: "chart-dot" }));
       }
     });
-    [[8, "09:30", "start"], [140, "11:30 / 13:00", "middle"], [272, "15:00", "end"]].forEach(([position, label, anchor]) => {
-      svg.append(svgElement("text", { x: position, y: 112, "text-anchor": anchor }, label));
-    });
     container.replaceChildren(svg);
   }
 
@@ -125,7 +117,10 @@
     field(card, "date", `行情日期 ${text(item.trade_date)} · 截至 ${text(item.as_of)}（北京时间）`);
     field(card, "baseline", `同期基准 ${text(item.previous_date)} · ${text(item.as_of)}${item.as_of === "15:00" ? "（全天）" : ""}`);
     field(card, "source", `数据源 ${text(item.source)}`);
-    field(card, "scope", text(item.scope, card === total ? "沪深 A 股独立统计，不含北交所与 B 股；不对九项行情求和。" : "统计口径待更新"));
+    field(card, "scope", text(item.scope, card === total ? "沪深 A 股独立统计，不含北交所与 B 股；不对各项行情求和。" : "统计口径待更新"));
+    field(card, "brief", item.status === "ready"
+      ? `${text(item.trade_date)} ${text(item.as_of)}${item.stale ? " · 已过期" : ""}` : "行情暂不可用",
+      item.stale || item.status !== "ready" ? "market-brief market-warning" : "market-brief");
     const label = item.status === "ready" ? "缓存行情" : "行情不可用";
     field(card, "status", `${label}${item.stale ? " · 已过期" : ""} · 获取 ${timestamp(item.fetched_at)}${item.message ? " · " + text(item.message) : ""}`);
     drawChart(card, item);

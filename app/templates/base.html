@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}长虹{% endblock %}</title>
-  <script src="/static/app.js"></script>
-  <link rel="stylesheet" href="/static/site.css">
+  <script src="/static/app.js?v={{ asset_versions.get('app.js', 'dev') }}"></script>
+  <link rel="stylesheet" href="/static/site.css?v={{ asset_versions.get('site.css', 'dev') }}">
   {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">

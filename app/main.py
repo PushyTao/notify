@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import hmac
+import hashlib
 import json
 import secrets
 import sqlite3
@@ -37,6 +38,10 @@ def create_app(db_path=None, secret_key=None, admin_password=None, secure_cookie
     app = FastAPI(title='Douyin Notify', docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store, app.state.settings = store, settings
     templates = Jinja2Templates(directory=ROOT / 'templates')
+    templates.env.globals['asset_versions'] = {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+        for path in (ROOT / 'static').iterdir() if path.is_file()
+    }
     templates.env.filters['datetime'] = lambda value: datetime.fromtimestamp(value, ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S') if value else '—'
     # check_dir=False permits independent template implementation during development.
     app.mount('/static', StaticFiles(directory=ROOT / 'static', check_dir=False), name='static')
