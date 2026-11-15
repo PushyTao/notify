@@ -130,6 +130,26 @@ button, select, summary { cursor: pointer; }
 .record-field.metadata:first-child dd { font-variant-numeric: tabular-nums; }
 .prose { white-space: pre-wrap; line-height: 1.85; }
 .record-field.summary dd { max-width: 74ch; }
+.markdown { white-space: normal; min-width: 0; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown pre, .markdown table { margin: .65rem 0; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
+  color: var(--ink); font-size: 1.05rem; line-height: 1.5; margin: 1rem 0 .4rem;
+}
+.markdown h1 { font-size: 1.2rem; }
+.markdown h2 { font-size: 1.12rem; }
+.markdown ul, .markdown ol { padding-left: 1.6rem; }
+.markdown li + li { margin-top: .25rem; }
+.markdown li > p { margin: .25rem 0; }
+.markdown blockquote { border-left: 3px solid var(--accent); padding: .15rem .85rem; color: var(--muted); }
+.markdown code { background: var(--subtle); border-radius: .25rem; padding: .1rem .3rem; font-size: .9em; }
+.markdown pre { max-width: 100%; overflow-x: auto; padding: .75rem; background: var(--subtle); border: 1px solid var(--line); border-radius: .4rem; white-space: pre; }
+.markdown pre code { padding: 0; background: none; }
+.markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: .92em; }
+.markdown th, .markdown td { border: 1px solid var(--line); padding: .35rem .6rem; text-align: left; }
+.markdown th { background: var(--subtle); font-weight: 650; }
+.markdown hr { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .transcript { background: var(--subtle); border: 1px solid var(--line); border-radius: .55rem; }
 .transcript summary { color: var(--accent); font-size: .91rem; padding: .5rem .75rem; }
 .transcript[open] .prose { padding: .45rem .75rem .85rem; }

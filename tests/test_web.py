@@ -104,6 +104,29 @@ def test_public_order_sort_and_no_admin_link(client):
     assert positions == sorted(positions)
 
 
+def test_public_summary_markdown_is_rendered_by_routes(client):
+    from bs4 import BeautifulSoup
+    with client.app.state.store.connect() as db:
+        db.execute("INSERT INTO authors(name,source_id,created_at) VALUES('Author','abc',1)")
+        cursor = db.execute(
+            "INSERT INTO videos(video_id,author_id,author_name,published_at,title,url,media_url,transcript,summary,status) "
+            "VALUES('markdown',1,'Author',100,'Title','https://www.douyin.com/video/1','https://example.com/v',?,?,'complete')",
+            ('**原始全文**', '## 总结\n\n**重点**\n\n<script>alert(1)</script>'),
+        )
+        record_id = cursor.lastrowid
+    for url in ['/', f'/records/{record_id}']:
+        response = client.get(url)
+        assert response.status_code == 200
+        page = BeautifulSoup(response.text, 'html.parser')
+        summary = page.select_one('.record-field.summary dd')
+        assert summary.select_one('h2').text == '总结'
+        assert summary.select_one('strong').text == '重点'
+        assert summary.select_one('script') is None
+        transcript = page.select_one('.transcript .prose')
+        assert transcript.text == '**原始全文**'
+        assert transcript.select_one('strong') is None
+
+
 def test_finance_home_has_fixed_market_cards_and_independent_total(client):
     from bs4 import BeautifulSoup
     page = BeautifulSoup(client.get('/').text, 'html.parser')

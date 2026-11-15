@@ -8,7 +8,7 @@
       <dt>博主名称</dt><dd>{{ record.author_name }}</dd>
     </div>
     <div class="record-field summary">
-      <dt>总结内容</dt><dd class="prose">{{ record.summary }}</dd>
+      <dt>总结内容</dt><dd class="prose markdown">{{ record.summary | markdown }}</dd>
     </div>
     <div class="record-field">
       <dt>内容全文</dt>
