@@ -6,6 +6,8 @@ from email.message import EmailMessage
 from functools import lru_cache
 from hashlib import sha256
 from html import escape
+import base64
+import io
 import ipaddress
 import json
 from pathlib import Path
@@ -44,6 +46,7 @@ DOUYIN_MEDIA_HEADERS = {
                    '(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'),
 }
 AUDIO_SECONDS = 12 * 60
+MIMO_SEGMENT_SECONDS = 60
 SUMMARY_CHARS = 6000
 SUMMARY_CHUNKS = 32
 _DNS_SLOTS = BoundedSemaphore(4)
@@ -508,21 +511,61 @@ def _whisper(model, cache_dir):
     return WhisperModel(model, device='cpu', compute_type='int8', download_root=cache_dir)
 
 
+def _mimo_transcribe(wav, endpoint, headers, model, language):
+    # Keep every PCM frame in order, with each request well below MiMo's 10 MB
+    # base64 limit and short enough for its 2K-token transcription output.
+    texts = []
+    with wave.open(str(wav), 'rb') as source:
+        if (source.getnchannels(), source.getsampwidth(), source.getframerate()) != (1, 2, 16000):
+            raise IntegrationError('小米 MiMo ASR 音频格式无效')
+        while frames := source.readframes(MIMO_SEGMENT_SECONDS * 16000):
+            buffer = io.BytesIO()
+            with wave.open(buffer, 'wb') as segment:
+                segment.setparams(source.getparams())
+                segment.writeframes(frames)
+            encoded = base64.b64encode(buffer.getvalue()).decode('ascii')
+            if len(encoded) > 10_000_000:
+                raise IntegrationError('小米 MiMo ASR 音频分段超过大小限制')
+            _, result = _json_request('POST', endpoint, '小米 MiMo ASR', timeout=90, headers=headers, json={
+                'model': model, 'stream': False,
+                'messages': [{'role': 'user', 'content': [{'type': 'input_audio',
+                    'input_audio': {'data': 'data:audio/wav;base64,' + encoded}}]}],
+                'asr_options': {'language': language or 'auto'},
+            })
+            choices = result.get('choices')
+            choice = _object(choices[0]) if isinstance(choices, list) and choices else {}
+            text = _text(_object(choice.get('message')).get('content'))
+            if result.get('error') is not None or choice.get('finish_reason') != 'stop' or not text:
+                raise IntegrationError(f'小米 MiMo ASR 第 {len(texts) + 1} 段未返回完整转写，请检查音频或重试')
+            texts.append(text)
+    return '\n'.join(texts)
+
+
 def transcribe(media_url: str, settings: dict) -> str:
     backend = settings.get('backend') or 'local'
-    if backend not in ('local', 'api'):
+    if backend not in ('local', 'api', 'mimo'):
         raise IntegrationError('不支持此语音转写方式')
-    model = _text(settings.get('model')) or ('small' if backend == 'local' else 'whisper-1')
+    model = _text(settings.get('model')) or {'local': 'small', 'api': 'whisper-1', 'mimo': 'mimo-v2.5-asr'}[backend]
     language = _text(settings.get('language', 'zh')) or None
     if backend == 'api':
         endpoint = _endpoint(settings.get('base_url'), '/audio/transcriptions', '语音转写 API 地址')
         headers = _credential(settings.get('api_key'))
+    elif backend == 'mimo':
+        if model != 'mimo-v2.5-asr' or language not in (None, 'auto', 'zh', 'en'):
+            raise IntegrationError('小米 MiMo ASR 请使用 mimo-v2.5-asr，语言填写 zh、en 或 auto')
+        headers = _credential(settings.get('api_key'))
+        if not headers:
+            raise IntegrationError('请填写小米 MiMo ASR API Key')
+        endpoint = _endpoint(_text(settings.get('base_url')) or 'https://api.xiaomimimo.com/v1',
+                             '/chat/completions', '小米 MiMo ASR 地址')
     try:
         with TemporaryDirectory(prefix='notify-media-') as temp:
             media, wav = Path(temp) / 'media', Path(temp) / 'audio.wav'
             _download_media(media_url, media)
             _extract_audio(media, wav)
-            if backend == 'api':
+            if backend == 'mimo':
+                transcript = _mimo_transcribe(wav, endpoint, headers, model, language)
+            elif backend == 'api':
                 data = {'model': model, 'response_format': 'json'}
                 if language:
                     data['language'] = language

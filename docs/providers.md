@@ -95,6 +95,24 @@ Authorization: Bearer <供应商 API Key>
 
 API 模式填入兼容 OpenAI 转写协议的地址（如服务的 `/v1`）和模型 ID（如 `whisper-1`）。应用先下载媒体，在本地用 `ffmpeg` 提取音频，再以 multipart `file` 发送到 `/audio/transcriptions`，读取响应的 `text`。空白文本、没有音轨或无法解码会使任务失败。
 
+### 小米 MiMo ASR
+
+在长虹 `/admin` → 设置 → 语音转写中选择 **小米 MiMo ASR**，填写并保存：
+
+| 字段 | 值 |
+| --- | --- |
+| 转写方式 | 小米 MiMo ASR |
+| 转写 API 基础地址 | `https://api.xiaomimimo.com/v1`（选择时自动填入；留空也使用此地址） |
+| 转写模型 | `mimo-v2.5-asr`（自动填入） |
+| 转写 API 密钥 | 小米 MiMo 开放平台的 API Key，不是 DTK 的 Key |
+| 语言代码 | 中文 `zh`、英文 `en`，或 `auto`；留空自动识别 |
+
+此方式在小米云端转写，不下载或加载本地 Whisper 模型；服务器仍需 FFmpeg 提取音频，镜像已包含。音频会发送给所配置的服务并按其规则计费。切换转写方式后重新填写对应密钥，避免沿用其他提供方的凭据；同一方式保存时密钥留空仍保留原值。想恢复本地转写，选择“本地 faster-whisper”，确认模型（默认 `small`）后保存。
+
+小米接口使用 `/chat/completions` 和 Base64 WAV 音频，与通用 API 的 `/audio/transcriptions` 协议不同，因此必须选择“小米 MiMo ASR”。程序将提取后的 16 kHz 单声道音频按最多 60 秒顺序分段，每段低于官方的 10 MB Base64 限制，读取 `choices[0].message.content` 后按顺序合并。总时长仍最多 12 分钟；任一段失败、返回空白或被截断时，整次转写失败，不保存部分全文。分段边界可能影响个别词句，财经数字和专有名词仍应核对原视频。任务重试会重新发送音频，可能重复计费。
+
+配置后可对一个首次补抓设为 1 的博主“立即检查”，在视频任务和 Worker 日志中确认转写结果。需要小米有效凭据和可用额度才能验证真实识别效果；保存配置本身不会调用计费接口。协议参考：[小米语音识别指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/Speech-Recognition)、[API 文档](https://mimo.mi.com/docs/zh-CN/api/audio/Speech-Recognition)。
+
 媒体仅允许指向公共地址的 HTTP(S) 默认端口；每次跳转重新验证，DNS 验证后按检查通过的 IP 连接，HTTPS 仍校验证书。最多 4 次跳转、128 MiB 下载、12 分钟音频；临时媒体和音频文件在处理完成或失败后清理。重试转写时，通过 DTK 视频详情接口刷新签名媒体地址，或在第三方来源的作品列表中按视频 ID 查找。第三方来源须重新提供有效链接；作品已从列表移除或超出分页上限时，无法刷新。
 
 ## 总结模型与 SMTP

@@ -42,7 +42,7 @@ jobs:
       - name: Python 与前端回归测试
         run: |
           uv run --no-sync pytest -q
-          node --test tests/market_strip.test.cjs tests/market_ui.test.cjs
+          node --test tests/market_strip.test.cjs tests/market_ui.test.cjs tests/asr_ui.test.cjs
       - name: 生成镜像版本号
         id: version
         shell: bash

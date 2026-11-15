@@ -292,6 +292,9 @@ def create_app(db_path=None, secret_key=None, admin_password=None, secure_cookie
     def update_settings(group: str, body: dict):
         try:
             validate_settings(group,body)
+            if group == 'asr':
+                from app.schemas import merge_asr_settings
+                body = merge_asr_settings(settings.get('asr'), body)
             if group == 'collector' and body.get('cookie'):
                 raise ValueError('请使用独立的 Cookie 导入操作')
             settings.save(group,body)

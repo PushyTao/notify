@@ -3,6 +3,7 @@
 {% block body_class %}admin-page{% endblock %}
 {% block head %}
 <meta name="csrf-token" content="{{ csrf }}">
+<script src="/static/asr.js?v={{ asset_versions.get('asr.js', 'dev') }}" defer></script>
 <script src="/static/admin.js?v={{ asset_versions.get('admin.js', 'dev') }}" defer></script>
 {% endblock %}
 {% block header_actions %}
@@ -165,13 +166,14 @@
     <h2>语音转写</h2>
     <form id="asr-form" method="post">
       <div class="form-grid">
-        {{ select_field('backend', '转写方式', [('local', '本地 faster-whisper'), ('api', '语音转写 API')]) }}
+        {{ select_field('backend', '转写方式', [('local', '本地 faster-whisper'), ('api', '通用语音转写 API'), ('mimo', '小米 MiMo ASR')]) }}
         {{ field('model', '转写模型', required=true) }}
         {{ field('language', '语言代码') }}
         {{ field('cache_dir', '本地模型缓存目录') }}
         {{ field('base_url', '转写 API 基础地址', 'url') }}
         {{ field('api_key', '转写 API 密钥', 'password', false, 'autocomplete="off"') }}
       </div>
+      <p id="asr-hint" class="hint" aria-live="polite"></p>
       {{ config_button('保存转写配置') }}
     </form>
   </section>

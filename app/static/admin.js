@@ -18,6 +18,7 @@ const configuration = {
   smtp: byId("smtp-form"),
   prompt: promptForm,
 };
+const asrController = createAsrFormController(configuration.asr, byId("asr-hint"));
 const metrics = {
   authors: "监测博主",
   subscribers: "订阅者",
@@ -107,6 +108,7 @@ function applySettings(group) {
     const saved = settings[`${input.name}_set`];
     input.placeholder = saved ? "已配置，留空保留" : "未配置";
   }
+  if (group === "asr") asrController.load(settings);
 }
 
 function run(button, work) {

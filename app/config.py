@@ -46,6 +46,8 @@ class Settings:
         if group not in DEFAULTS or not values.keys() <= DEFAULTS[group].keys():
             raise ValueError('未知设置字段')
         data = self.get(group)
+        if group == 'asr' and values.get('backend', data['backend']) != data['backend']:
+            data['api_key'] = ''
         for key, value in values.items():
             if key not in SECRETS or value:
                 data[key] = value

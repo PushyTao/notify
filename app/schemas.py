@@ -99,7 +99,7 @@ def validate_settings(group, values):
             http_url(value, allow_empty=True)
         if key == 'tls' and value not in ('starttls', 'ssl', 'none'):
             raise ValueError('无效的 TLS 模式')
-        if key == 'backend' and value not in ('local', 'api'):
+        if key == 'backend' and value not in ('local', 'api', 'mimo'):
             raise ValueError('无效的转写方式')
         if key == 'text' and not value.strip():
             raise ValueError('提示词不能为空')
@@ -108,3 +108,15 @@ def validate_settings(group, values):
         if key in ('host', 'username') and ('\n' in value or '\r' in value):
             raise ValueError('配置含非法换行')
     return values
+
+
+def merge_asr_settings(current, values):
+    merged = {**current, **{k: v for k, v in values.items() if k != 'api_key' or v}}
+    if merged['backend'] != current['backend']:
+        merged['api_key'] = values.get('api_key', '')
+    if merged['backend'] == 'mimo':
+        if merged['model'].strip() != 'mimo-v2.5-asr' or merged['language'].strip() not in ('', 'auto', 'zh', 'en'):
+            raise ValueError('小米 ASR 模型或语言无效')
+        if not merged['api_key'].strip():
+            raise ValueError('小米 ASR 需要 API Key')
+    return merged

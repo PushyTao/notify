@@ -37,6 +37,32 @@ def test_multiple_models_exactly_one_active(client):
     assert models[-1]['enabled'] == 1
 
 
+def test_mimo_settings_keep_secrets_private_and_allow_switch_back(client):
+    h = login(client)
+    from bs4 import BeautifulSoup
+    page = BeautifulSoup(client.get('/admin').text, 'html.parser')
+    form = page.select_one('#asr-form')
+    assert {option['value'] for option in form.select('select[name="backend"] option')} == {'local', 'api', 'mimo'}
+    assert form.select_one('#asr-hint') is not None
+    scripts = [s['src'].split('?')[0] for s in page.select('script[src]')]
+    assert scripts.index('/static/asr.js') < scripts.index('/static/admin.js')
+    url = '/api/admin/settings/asr'
+    cfg = {'backend': 'mimo', 'model': 'mimo-v2.5-asr', 'base_url': 'https://api.xiaomimimo.com/v1',
+           'language': 'zh', 'api_key': 'mimo-secret'}
+    assert client.put(url, headers=h, json=cfg).status_code == 200
+    assert client.put(url, headers=h, json={'api_key': '', 'language': 'auto'}).status_code == 200
+    state = client.get('/api/admin/state').json()['settings']['asr']
+    assert state['backend'] == 'mimo' and state['api_key_set'] is True
+    assert 'mimo-secret' not in str(state)
+    for values in [{'language': 'ja'}, {'model': 'small'}]:
+        assert client.put(url, headers=h, json=values).status_code == 422
+    assert client.put(url, headers=h, json={'backend': 'local', 'model': 'small'}).status_code == 200
+    state = client.get('/api/admin/state').json()['settings']['asr']
+    assert state['backend'] == 'local' and state['api_key_set'] is False
+    # A different provider must not inherit the old provider's credential.
+    assert client.put(url, headers=h, json={**cfg, 'api_key': ''}).status_code == 422
+
+
 def test_author_and_subscriber_validation(client):
     h = login(client)
     r = client.post('/api/admin/authors', headers=h, json={'name':'作者','source_id':'https://www.douyin.com/user/abc','interval_seconds':600})
